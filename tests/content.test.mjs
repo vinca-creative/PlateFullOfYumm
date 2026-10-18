@@ -91,6 +91,13 @@ test('validates public comment snapshots and excludes private or unassociated da
 test('shares recipe list projection without sending ingredients to browse data', () => {
   const source = item({
     kind: 'recipe',
+    image: {
+      src: 'https://platefullofyum.com/banana-bread.jpg',
+      alt: 'Banana bread',
+      width: 1200,
+      height: 800,
+      variants: [{ src: 'https://platefullofyum.com/banana-bread-small.jpg', width: 400, height: 267 }]
+    },
     recipe: {
       title: 'Banana Bread',
       description: 'A recipe description.',
@@ -101,6 +108,8 @@ test('shares recipe list projection without sending ingredients to browse data',
   const search = projectSearchRecipe(source);
 
   assert.deepEqual(Object.keys(browse), ['post_id', 'title', 'excerpt', 'path', 'image', 'categories']);
+  assert.deepEqual(Object.keys(browse.image), ['src', 'alt', 'width', 'height']);
+  assert.equal('variants' in search.image, false);
   assert.equal(browse.excerpt, 'Editorial copy.');
   assert.deepEqual(search.ingredients, ['2 bananas', '1 cup flour']);
 });

@@ -327,26 +327,26 @@
 </section>
 
 <style>
-  .discussion { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #dadcd4; font: 1rem/1.6 system-ui,sans-serif; }
-  .eyebrow { margin: 0; color: #46543c; font: 700 .75rem system-ui,sans-serif; letter-spacing: .1em; text-transform: uppercase; }
-  h2 { margin: .3rem 0; font: 600 1.8rem Georgia,serif; }
-  h2 span { color: #5d655b; font: 400 1rem system-ui,sans-serif; }
-  .snapshot-label, time, .reply-link { color: #5d655b; font-size: .85rem; }
+  .discussion { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--line); font: 1rem/1.6 Arial,Helvetica,sans-serif; }
+  .eyebrow { margin: 0; color: var(--forest); font: 700 .75rem Arial,Helvetica,sans-serif; letter-spacing: .1em; text-transform: uppercase; }
+  h2 { margin: .3rem 0; font: normal 1.8rem Georgia,serif; }
+  h2 span { color: var(--muted); font: 400 1rem Arial,Helvetica,sans-serif; }
+  .snapshot-label, time, .reply-link { color: var(--muted); font-size: .85rem; }
   ol { display: grid; gap: .8rem; list-style: none; padding: 0; }
-  li { padding: 1rem; background: white; border: 1px solid #dadcd4; border-radius: .4rem; }
+  li { padding: 1rem; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
   li.reply { margin-left: clamp(1rem, 5vw, 3rem); }
-  header { display: flex; flex-wrap: wrap; gap: .3rem .8rem; align-items: baseline; }
-  .empty, .availability { padding: 1rem; background: #f1eee6; }
+  header { display: flex; flex-wrap: wrap; gap: .3rem .8rem; align-items: baseline; padding: 0; border: 0; background: transparent; }
+  .empty, .availability { padding: 1rem; background: #f0f3eb; border: 1px solid #bdc9b2; border-radius: 8px; }
   .noscript-note, .live-status, .form-status { font-size: .9rem; }
-  .comment-form { margin-top: 2rem; padding: 1.25rem; border: 1px solid #dadcd4; border-radius: .5rem; }
-  h3 { margin-top: 0; font: 600 1.4rem Georgia,serif; }
+  .comment-form { margin-top: 2rem; padding: 1.25rem; background: #f0f3eb; border: 1px solid #bdc9b2; border-radius: 8px; }
+  h3 { margin-top: 0; font: normal 1.4rem Georgia,serif; }
   form { display: grid; gap: .65rem; }
-  input, textarea { width: 100%; padding: .65rem; border: 1px solid #777; border-radius: .25rem; font: inherit; }
-  button { min-height: 2.75rem; padding: .55rem .9rem; border: 1px solid #46543c; border-radius: .3rem; background: #46543c; color: white; font: 600 .95rem system-ui,sans-serif; cursor: pointer; }
-  button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px solid #995a42; outline-offset: 2px; }
+  input, textarea { width: 100%; padding: .65rem; border: 1px solid var(--sage); border-radius: 4px; background: var(--paper); color: var(--ink); font: inherit; }
+  button { min-height: 2.75rem; padding: .55rem .9rem; border: 1px solid var(--forest); border-radius: 30px; background: var(--forest); color: white; font: 600 .95rem Arial,Helvetica,sans-serif; cursor: pointer; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px solid #9c6349; outline-offset: 5px; }
   button:disabled { cursor: not-allowed; opacity: .65; }
   .reply-button { margin-top: .4rem; min-height: 2.25rem; padding: .3rem .65rem; font-size: .85rem; }
-  .cancel-reply { min-height: auto; padding: .2rem .4rem; }
+  .cancel-reply { min-height: auto; padding: .2rem .4rem; background: transparent; color: var(--forest); }
   .challenge { min-height: 65px; }
   @media print { .interaction, .live-status, .noscript-note { display: none !important; } .discussion { display: none !important; } }
 </style>

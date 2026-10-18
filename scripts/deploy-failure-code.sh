@@ -8,7 +8,9 @@ not_succeeded() {
   [[ "${!1:-}" != success ]]
 }
 
-if failed CLOUDFLARE_OUTCOME || failed PAGES_CLOUDFLARE_OUTCOME || failed PAGES_PROJECT_OUTCOME || failed PAGES_BRANCH_OUTCOME; then
+if failed DEV_STAGE_OUTCOME; then
+  printf 'deploy_failed\n'
+elif failed CLOUDFLARE_OUTCOME || failed PAGES_CLOUDFLARE_OUTCOME || failed PAGES_PROJECT_OUTCOME || failed PAGES_BRANCH_OUTCOME; then
   printf 'configuration_missing\n'
 elif not_succeeded SNAPSHOT_OUTCOME || not_succeeded BUILD_OUTCOME || failed HEADERS_OUTCOME; then
   printf 'build_failed\n'

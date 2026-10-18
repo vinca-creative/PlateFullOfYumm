@@ -1,85 +1,143 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { publicConfig } from '#lib/config.ts';
+  import { basePath as base, publicConfig } from '#lib/config.ts';
   let { data }: { data: PageData } = $props();
-  const socialImage = $derived(data.frontPage?.seo.og_image ?? data.frontPage?.image?.src ?? data.featured?.seo.og_image ?? data.featured?.image?.src ?? null);
+  const socialImage = $derived(data.frontPage?.seo.og_image ?? data.frontPage?.image?.src ?? data.featured?.image?.src ?? null);
+  const frontCanonical = $derived.by(() => {
+    const canonical = data.frontPage?.seo.canonical;
+    if (!canonical) return `${publicConfig.siteOrigin}${base}/`;
+    const url = new URL(canonical);
+    if (!base || url.origin !== publicConfig.siteOrigin) return canonical;
+    return `${url.origin}${base}${url.pathname}${url.search}${url.hash}`;
+  });
 </script>
 
 <svelte:head>
   <title>{data.frontPage?.seo.title || 'Plate Full of Yum — Recipes from Asha’s Kitchen'}</title>
   <meta name="description" content={data.frontPage?.seo.description || 'Find thoughtful recipes and stories from Asha’s kitchen.'} />
-  <link rel="canonical" href={data.frontPage?.seo.canonical ?? `${publicConfig.siteOrigin}/`} />
+  <link rel="canonical" href={frontCanonical} />
   <meta name="robots" content={data.frontPage?.seo.robots ?? 'index,follow'} />
   <meta property="og:title" content={data.frontPage?.seo.og_title || data.frontPage?.seo.title || 'Plate Full of Yum — Recipes from Asha’s Kitchen'} />
   <meta property="og:description" content={data.frontPage?.seo.og_description || data.frontPage?.seo.description || 'Find thoughtful recipes and stories from Asha’s kitchen.'} />
-  <meta property="og:url" content={data.frontPage?.seo.canonical ?? `${publicConfig.siteOrigin}/`} />
+  <meta property="og:url" content={frontCanonical} />
   {#if socialImage}<meta property="og:image" content={socialImage} />{/if}
   <meta name="twitter:card" content={socialImage ? 'summary_large_image' : 'summary'} />
 </svelte:head>
 
 <main id="main">
-  <section class="intro">
-    <p class="eyebrow">A home for good food</p>
-    <h1>Make yourself<br />at home.</h1>
-    <p>Thoughtful recipes, real-life cooking, and stories from Asha’s kitchen.</p>
-    <a class="button" href="/recipes/">Find something to cook</a>
+  <section class="hero wrap" class:hero-without-image={!data.featured?.image}>
+    <div class="hero-copy">
+      <p class="eyebrow">A home for good food</p>
+      <h1>Make yourself<br />at home.</h1>
+      <p>Thoughtful recipes, real-life cooking, and stories from Asha’s kitchen.</p>
+      <a class="primary" href="{base}/recipes/">Find something to cook <span aria-hidden="true">↗</span></a>
+    </div>
+    {#if data.featured?.image}
+      <div class="hero-visual">
+        <a class="hero-image" href="{base}{data.featured.path}" aria-label={`Read ${data.featured.title}`}>
+          <img src={data.featured.image.src} alt={data.featured.image.alt} width={data.featured.image.width} height={data.featured.image.height} fetchpriority="high" />
+        </a>
+        <div class="scribble" aria-hidden="true">made for<br />real life</div>
+        <a class="photo-note" href="{base}{data.featured.path}">
+          <span>FRESH FROM THE KITCHEN</span>
+          <h2>{data.featured.title}<b aria-hidden="true">↗</b></h2>
+        </a>
+      </div>
+    {/if}
   </section>
-  {#if data.featured}
-    <section class="feature wrap" aria-labelledby="featured-title">
-      {#if data.featured.image}<a class="feature-image" href={data.featured.path}><img src={data.featured.image.src} alt={data.featured.image.alt} width={data.featured.image.width} height={data.featured.image.height} fetchpriority="high" /></a>{/if}
-      <div class="feature-copy"><p class="eyebrow">Fresh from the kitchen</p><h2 id="featured-title"><a href={data.featured.path}>{data.featured.title}</a></h2><p>{data.featured.excerpt || data.featured.recipe?.description}</p><a class="text-link" href={data.featured.path}>See the recipe →</a></div>
+  {#if data.categories.length}
+    <nav class="browse wrap" aria-label="Browse recipe categories">
+      <p>What are you craving?</p>
+      <div class="chips">{#each data.categories as category (category.id)}<a class="chip" href="{base}{category.path}">{category.name}<span aria-hidden="true">↗</span></a>{/each}</div>
+    </nav>
+  {/if}
+  {#if data.recipes.length}
+    <section class="recipe-section wrap" aria-labelledby="recipes-title">
+      <div class="section-head">
+        <div><p class="eyebrow">FROM THE RECIPE COLLECTION</p><h2 id="recipes-title">Good things to cook.</h2><a class="text-link" href="{base}/recipes/">Explore all recipes &amp; articles <span aria-hidden="true">↗</span></a></div>
+        <a class="all-link" href="{base}/recipes/">Browse all recipes <span aria-hidden="true">↗</span></a>
+      </div>
+      <div class="grid">{#each data.recipes as recipe (recipe.post_id)}
+        <article class="card">
+          <a href="{base}{recipe.path}" class="card-link">
+            {#if recipe.image}<img class="card-image" src={recipe.image.src} alt={recipe.image.alt} width={recipe.image.width} height={recipe.image.height} loading="lazy" />{/if}
+            <p class="meta">FROM ASHA’S KITCHEN</p>
+            <h3>{recipe.title}</h3>
+            {#if recipe.excerpt}<p class="card-description">{recipe.excerpt}</p>{/if}
+            <span class="read">Read more <span aria-hidden="true">↗</span></span>
+          </a>
+        </article>
+      {/each}</div>
     </section>
   {/if}
   {#if data.balancedBitesArticle}
-    <section class="balanced-feature wrap" class:balanced-feature-text={!data.balancedBitesArticle.image} aria-labelledby="balanced-bites-title">
-      {#if data.balancedBitesArticle.image}<a class="balanced-image" href={data.balancedBitesArticle.path}><img src={data.balancedBitesArticle.image.src} alt={data.balancedBitesArticle.image.alt} width={data.balancedBitesArticle.image.width} height={data.balancedBitesArticle.image.height} loading="lazy" /></a>{/if}
-      <div class="balanced-copy"><p class="eyebrow">Balanced Bites</p><h2 id="balanced-bites-title"><a href={data.balancedBitesArticle.path}>{data.balancedBitesArticle.title}</a></h2>{#if data.balancedBitesArticle.excerpt}<p>{data.balancedBitesArticle.excerpt}</p>{/if}<a class="text-link" href={data.balancedBitesArticle.path}>Read the story →</a>{#if data.balancedBitesCategory}<a class="balanced-category-link" href={data.balancedBitesCategory.path}>Explore Balanced Bites</a>{/if}</div>
+    <section class="feature wrap" aria-labelledby="balanced-bites-title">
+      {#if data.balancedBitesArticle.image}<a class="feature-image" href="{base}{data.balancedBitesArticle.path}" aria-label={`Read ${data.balancedBitesArticle.title}`}><img src={data.balancedBitesArticle.image.src} alt={data.balancedBitesArticle.image.alt} width={data.balancedBitesArticle.image.width} height={data.balancedBitesArticle.image.height} loading="lazy" /></a>{/if}
+      <div class="feature-copy">
+        <p class="eyebrow">BALANCED BITES</p>
+        <h2 id="balanced-bites-title"><a href="{base}{data.balancedBitesArticle.path}">{data.balancedBitesArticle.title}</a></h2>
+        {#if data.balancedBitesArticle.excerpt}<p>{data.balancedBitesArticle.excerpt}</p>{/if}
+        <a class="text-link" href="{base}{data.balancedBitesArticle.path}">Read the story <span aria-hidden="true">↗</span></a>
+        {#if data.balancedBitesCategory}<a class="category-link" href="{base}{data.balancedBitesCategory.path}">Explore Balanced Bites <span aria-hidden="true">↗</span></a>{/if}
+      </div>
     </section>
   {/if}
-  {#if data.categories.length}
-    <section class="category-section wrap"><div class="section-heading"><div><p class="eyebrow">Browse by category</p><h2>What sounds good?</h2></div><a href="/recipes/">All recipes →</a></div><div class="category-list">{#each data.categories as category (category.id)}<a href={category.path}>{category.name}<span aria-hidden="true">↗</span></a>{/each}</div></section>
-  {/if}
-  {#if data.recipes.length}
-    <section class="latest wrap"><div class="section-heading"><div><p class="eyebrow">From Asha’s kitchen</p><h2>Recipes to keep close</h2></div><a href="/recipes/">Browse all →</a></div><div class="cards">{#each data.recipes as recipe (recipe.post_id)}<a href={recipe.path} class="recipe-preview">{#if recipe.image}<img src={recipe.image.src} alt={recipe.image.alt} width={recipe.image.width} height={recipe.image.height} loading="lazy" />{/if}<div><h3>{recipe.title}</h3><p>{recipe.excerpt || recipe.recipe?.description}</p></div></a>{/each}</div></section>
-  {/if}
   {#if data.stories.length}
-    <section class="stories wrap"><div class="section-heading"><div><p class="eyebrow">Beyond the plate</p><h2>Good things to read</h2></div></div><div class="story-list">{#each data.stories as story (story.post_id)}<a href={story.path}><span>{story.title}</span><span aria-hidden="true">→</span></a>{/each}</div></section>
+    <section class="stories wrap" aria-labelledby="stories-title">
+      <div class="section-head"><div><p class="eyebrow">BEYOND THE PLATE</p><h2 id="stories-title">Good things to read.</h2></div></div>
+      <div class="story-grid">{#each data.stories as story (story.post_id)}<a class="story-card" href="{base}{story.path}"><h3>{story.title}</h3><span aria-hidden="true">↗</span></a>{/each}</div>
+    </section>
   {/if}
 </main>
 
 <style>
-  .wrap { width: min(100% - 2.5rem, 75rem); margin-inline: auto; }
-  .intro { min-height: 20rem; padding: 4rem 1.25rem 3.5rem; text-align: center; background: #f1eee6; }
-  .eyebrow { margin: 0 0 .6rem; color: #46543c; font: 700 .75rem/1.4 system-ui,sans-serif; letter-spacing: .1em; text-transform: uppercase; }
-  h1 { margin: 0; font: 600 clamp(3rem, 9vw, 5.6rem)/.98 Georgia,serif; letter-spacing: -.04em; }
-  .intro > p:not(.eyebrow) { max-width: 34rem; margin: 1rem auto 1.4rem; color: #5d655b; font: 1.1rem/1.55 system-ui,sans-serif; }
-  .button { display: inline-flex; align-items: center; min-height: 2.9rem; padding: .7rem 1.1rem; border-radius: .35rem; background: #46543c; color: white; text-decoration: none; font: 600 .92rem system-ui,sans-serif; }
-  .balanced-feature { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(17rem, .7fr); align-items: center; gap: clamp(1.5rem, 6vw, 5rem); padding-block: 3rem; border-top: 1px solid #dadcd4; }
-  .balanced-feature-text { grid-template-columns: 1fr; }
-  .balanced-image img { display: block; width: 100%; height: auto; aspect-ratio: 4/3; object-fit: cover; border-radius: .5rem; }
-  .balanced-copy h2 { margin: .25rem 0 .75rem; font: 600 clamp(2rem, 4vw, 3rem)/1.1 Georgia,serif; }
-  .balanced-copy h2 a { color: #252a25; text-decoration: none; }
-  .balanced-copy > p:not(.eyebrow) { color: #5d655b; font: 1.05rem/1.6 system-ui,sans-serif; }
-  .balanced-category-link { display: inline-block; margin-left: 1rem; font: 600 .95rem system-ui,sans-serif; text-underline-offset: .2em; }
-  .feature { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(17rem, .7fr); align-items: center; gap: clamp(1.5rem, 6vw, 5rem); padding-block: 3rem; }
-  .feature-image img { display: block; width: 100%; height: auto; aspect-ratio: 4/3; object-fit: cover; border-radius: .5rem; }
-  .feature-copy h2 { margin: .25rem 0 .75rem; font: 600 clamp(2rem, 4vw, 3rem)/1.1 Georgia,serif; }
-  .feature-copy h2 a { color: #252a25; text-decoration: none; }
-  .feature-copy > p:not(.eyebrow) { color: #5d655b; font: 1.05rem/1.6 system-ui,sans-serif; }
-  .text-link { font: 700 .95rem system-ui,sans-serif; text-underline-offset: .2em; }
-  .latest, .category-section, .stories { padding-block: 2.5rem; border-top: 1px solid #dadcd4; }
-  .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
-  .section-heading h2 { margin: 0; font: 600 clamp(1.8rem, 4vw, 2.4rem)/1.15 Georgia,serif; }
-  .section-heading > a { font: 600 .9rem system-ui,sans-serif; white-space: nowrap; }
-  .category-list { display: flex; flex-wrap: wrap; gap: .65rem; }
-  .category-list a { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 2.8rem; padding: .65rem 1rem; border: 1px solid #c9cec2; border-radius: .35rem; background: white; color: #252a25; text-decoration: none; font: 600 .9rem system-ui,sans-serif; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1.4rem; }
-  .recipe-preview { overflow: hidden; background: white; border: 1px solid #dadcd4; border-radius: .5rem; color: inherit; text-decoration: none; }
-  .recipe-preview img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
-  .recipe-preview > div { padding: 1rem; }
-  .recipe-preview h3 { margin: 0; font: 600 1.4rem/1.2 Georgia,serif; }
-  .recipe-preview p { margin-bottom: 0; color: #5d655b; font: .92rem/1.5 system-ui,sans-serif; }
-  .story-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,20rem),1fr)); gap: .8rem 2rem; }
-  .story-list a { display: flex; justify-content: space-between; gap: 1rem; padding: .9rem 0; border-bottom: 1px solid #dadcd4; color: #252a25; text-decoration: none; font: 600 1.1rem Georgia,serif; }
-  @media(max-width: 720px) { .intro { padding-block: 3rem; } .feature, .balanced-feature { grid-template-columns: 1fr; } .feature-image:empty { display: none; } .section-heading { align-items: start; flex-direction: column; } }
+  .wrap { max-width: 1440px; margin-inline: auto; padding-inline: 5.5%; }
+  .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 7%; padding-block: 64px 55px; align-items: center; }
+  .hero-copy { min-width: 0; }
+  .eyebrow { margin: 0; color: var(--muted); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; font-weight: bold; }
+  .hero h1 { margin: 25px 0; font: normal clamp(55px, 6.1vw, 88px)/1.03 Georgia, serif; letter-spacing: -4px; }
+  .hero h1 em { color: #75866b; font-weight: normal; }
+  .hero-copy > p:not(.eyebrow) { max-width: 340px; color: var(--muted); font-size: 15px; line-height: 1.8; }
+  .primary { display: inline-flex; align-items: center; gap: 34px; margin-top: 20px; padding: 17px 24px; border-radius: 30px; background: var(--forest); color: white; font-size: 12px; }
+  .hero-visual { position: relative; padding-bottom: 22px; }
+  .hero-image { display: block; }
+  .hero-image img { display: block; width: 100%; height: 490px; object-fit: cover; border-radius: 170px 170px 5px 5px; }
+  .photo-note { position: absolute; bottom: 0; left: -24px; min-width: 240px; padding: 20px 25px; background: #e6ebdf; box-shadow: 0 6px 20px #25392e09; }
+  .photo-note > span { font-size: 9px; letter-spacing: 1.5px; }
+  .photo-note h2 { margin: 9px 0 0; font: normal 22px Georgia, serif; }
+  .photo-note b { float: right; margin-left: 28px; font-size: 20px; }
+  .hero-without-image { grid-template-columns: 1fr; }
+  .browse { display: flex; align-items: center; gap: 35px; padding-block: 30px 35px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .browse > p { margin: 0; font: italic 19px Georgia, serif; white-space: nowrap; }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip { display: inline-flex; align-items: center; gap: 14px; padding: 12px 19px; border: 1px solid #ccd4c4; border-radius: 25px; color: var(--forest); font-size: 12px; }
+  .chip:hover { border-color: var(--forest); background: var(--forest); color: white; }
+  .recipe-section, .stories { padding-block: 65px; }
+  .section-head { display: flex; align-items: end; justify-content: space-between; gap: 25px; margin-bottom: 30px; }
+  .section-head h2, .stories h2 { margin: 12px 0 0; font: normal 42px/1.15 Georgia, serif; letter-spacing: -1.3px; }
+  .text-link { display: inline-block; margin-top: 15px; padding-bottom: 7px; border-bottom: 1px solid; font-size: 12px; }
+  .all-link { padding-bottom: 7px; font-size: 12px; white-space: nowrap; }
+  .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
+  .card { position: relative; min-width: 0; }
+  .card-link { display: block; }
+  .card-image { display: block; width: 100%; height: 285px; object-fit: cover; border-radius: 4px; transition: filter .2s; }
+  .card-link:hover .card-image { filter: brightness(.92); }
+  .meta { margin: 19px 0 10px; color: var(--muted); font-size: 9px; letter-spacing: 1.3px; text-transform: uppercase; }
+  .card h3 { margin: 0 0 12px; font: normal 23px/1.2 Georgia, serif; letter-spacing: -.4px; }
+  .card-description { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+  .read { color: var(--muted); font-size: 11px; }
+  .feature { display: grid; grid-template-columns: 1fr 1fr; align-items: center; margin-block: 10px 65px; overflow: hidden; border-radius: 5px; background: #e6ebdf; }
+  .feature-image img { display: block; width: 100%; height: 390px; object-fit: cover; }
+  .feature-copy { padding: 45px 14%; }
+  .feature-copy h2 { margin: 12px 0 0; font: normal 44px/1.15 Georgia, serif; letter-spacing: -1.3px; }
+  .feature-copy > p:not(.eyebrow) { color: var(--muted); font-size: 14px; line-height: 1.8; }
+  .category-link { display: inline-block; margin: 15px 0 0 18px; padding-bottom: 7px; border-bottom: 1px solid; font-size: 12px; }
+  .stories { border-top: 1px solid var(--line); }
+  .story-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; }
+  .story-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 110px; padding: 22px; border: 1px solid var(--line); background: white; }
+  .story-card h3 { margin: 0; font: normal 22px/1.25 Georgia, serif; }
+  @media (min-width: 1500px) { .hero-image img { height: 540px; } }
+  @media (max-width: 900px) { .hero { gap: 5%; } .hero-image img { height: 420px; } .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .card-image { height: 330px; } .browse { display: block; } .feature-copy { padding: 30px 10%; } .feature-copy h2 { font-size: 35px; } }
+  @media (max-width: 600px) { .wrap { padding-inline: 6%; } .hero { grid-template-columns: 1fr; padding-block: 35px; } .hero h1 { font-size: 65px; letter-spacing: -3px; } .hero-copy > p:not(.eyebrow) { max-width: 100%; } .hero-visual { margin: 20px 10px 0 12px; } .hero-image img { height: 390px; } .photo-note { left: -12px; } .browse { padding-block: 20px; } .chips { gap: 8px; } .chip { padding: 10px 15px; } .section-head { align-items: start; flex-direction: column; } .section-head h2, .stories h2 { font-size: 35px; } .grid { gap: 23px 15px; } .card-image { height: 210px; } .card h3 { font-size: 20px; } .meta { font-size: 8px; line-height: 1.7; } .feature { grid-template-columns: 1fr; margin-bottom: 45px; } .feature-image img { height: 300px; } .feature-copy { padding: 32px; } .story-grid { grid-template-columns: 1fr; } .recipe-section, .stories { padding-block: 40px; } }
 </style>
+

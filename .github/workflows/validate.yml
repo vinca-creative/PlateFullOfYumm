@@ -25,5 +25,7 @@ jobs:
       - run: npm ci
       - run: npm run test:content
       - run: npm run check
-      - run: npm run content:snapshot
-      - run: npm run build
+      - if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        run: npm run content:snapshot
+      - if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+        run: npm run build

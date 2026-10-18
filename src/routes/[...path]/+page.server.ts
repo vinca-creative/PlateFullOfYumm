@@ -1,5 +1,6 @@
 import { parseFragment, serializeOuter } from 'parse5';
 import type { DefaultTreeAdapterMap } from 'parse5';
+import { basePath as base } from '#lib/config.ts';
 import { error } from '@sveltejs/kit';
 import type { EntryGenerator, PageServerLoad } from './$types';
 import { getPublicRoutes, getSnapshot, findItem } from '#lib/server/content.ts';
@@ -105,27 +106,50 @@ export const load: PageServerLoad = ({ params }) => {
   const snapshot = getSnapshot();
   const category = snapshot.items.flatMap((entry) => entry.categories).find((term) => term.path === path);
   if (!item && !category) error(404, 'This page could not be found.');
-  const categoryItems = category ? snapshot.items.filter((entry) => entry.categories.some((term) => term.id === category.id)) : [];
+  const categoryItems = category ? snapshot.items.filter((entry) => entry.categories.some((term) => term.id === category.id))
+    .map(({ post_id, path, image, kind, title, excerpt }) => ({
+      post_id,
+      path,
+      kind,
+      title,
+      excerpt,
+      image: image ? { src: image.src, alt: image.alt, width: image.width, height: image.height } : null
+    })) : [];
   const schemas: unknown[] = [];
-  const recipe = item ? recipeSchema(item) : null;
+  const withBasePath = (value: string) => {
+    if (!base) return value;
+    const url = new URL(value);
+    if (url.origin !== publicConfig.siteOrigin) return value;
+    if (url.pathname === base || url.pathname.startsWith(`${base}/`)) return value;
+    url.pathname = `${base}${url.pathname}`;
+    return url.toString();
+  };
+  const seo = item ? { ...item.seo, canonical: withBasePath(item.seo.canonical) } : null;
+  const itemWithCanonical = item && seo ? { ...item, seo } : item;
+  const recipe = itemWithCanonical ? recipeSchema(itemWithCanonical) : null;
   if (recipe) schemas.push(recipe);
-  if (item && item.kind !== 'page') schemas.push({ '@context': 'https://schema.org', '@type': 'Article', headline: item.title, description: item.seo.description, datePublished: item.date_published, dateModified: item.date_modified, author: { '@type': 'Person', name: item.author.name }, mainEntityOfPage: item.seo.canonical, ...(item.image ? { image: [item.image.src] } : {}) });
-  const crumbs = [{ name: 'Home', url: `${publicConfig.siteOrigin}/` }];
-  if (category) crumbs.push({ name: category.name, url: `${publicConfig.siteOrigin}${category.path}` });
-  else if (item) {
-    const term = item.categories[0];
-    if (term) crumbs.push({ name: term.name, url: `${publicConfig.siteOrigin}${term.path}` });
-    crumbs.push({ name: item.title, url: item.seo.canonical });
+  if (itemWithCanonical && itemWithCanonical.kind !== 'page') schemas.push({ '@context': 'https://schema.org', '@type': 'Article', headline: itemWithCanonical.title, description: itemWithCanonical.seo.description, datePublished: itemWithCanonical.date_published, dateModified: itemWithCanonical.date_modified, author: { '@type': 'Person', name: itemWithCanonical.author.name }, mainEntityOfPage: itemWithCanonical.seo.canonical, ...(itemWithCanonical.image ? { image: [itemWithCanonical.image.src] } : {}) });
+  const absoluteUrl = (localPath: string) => `${publicConfig.siteOrigin}${base}${localPath}`;
+  const crumbs = [{ name: 'Home', url: absoluteUrl('/') }];
+  if (category) crumbs.push({ name: category.name, url: absoluteUrl(category.path) });
+  else if (itemWithCanonical) {
+    const term = itemWithCanonical.categories[0];
+    if (term) crumbs.push({ name: term.name, url: absoluteUrl(term.path) });
+    crumbs.push({ name: itemWithCanonical.title, url: itemWithCanonical.seo.canonical });
   }
   schemas.push({ '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: crumbs.map((crumb, index) => ({ '@type': 'ListItem', position: index + 1, name: crumb.name, item: crumb.url })) });
-  if (item && item.kind !== 'page') schemas.push({ '@context': 'https://schema.org', '@type': 'Person', name: item.author.name });
+  if (itemWithCanonical && itemWithCanonical.kind !== 'page') schemas.push({ '@context': 'https://schema.org', '@type': 'Person', name: itemWithCanonical.author.name });
+  const serializedItem = itemWithCanonical ? (({ content_html, ...rest }) => rest)(itemWithCanonical) : null;
   return {
-    item,
+    item: serializedItem,
     category,
     categoryItems,
-    segments: item ? bodyParts(item.content_html, item.card_id) : [],
+    segments: item ? bodyParts(item.content_html, item.card_id).map((segment) => ({
+      ...segment,
+      html: segment.html.replace(/(href=["'])\/(?!\/)/g, `$1${base}/`)
+    })) : [],
     schemas: schemas.map(safeJson),
-    canonical: item?.seo.canonical ?? `${publicConfig.siteOrigin}${category?.path ?? '/'}`,
-    seo: item?.seo ?? null
+    canonical: seo?.canonical ?? absoluteUrl(category?.path ?? '/'),
+    seo
   };
 };

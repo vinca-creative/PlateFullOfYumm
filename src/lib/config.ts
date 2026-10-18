@@ -1,5 +1,7 @@
 const env = import.meta.env;
 
+export const basePath = env.BASE_URL === '/' ? '' : env.BASE_URL.replace(/\/$/, '');
+
 function publicOrigin(value: string): string {
   let url: URL;
   try {

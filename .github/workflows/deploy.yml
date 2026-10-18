@@ -1,9 +1,10 @@
-name: Publish production static site
+name: Deploy development and production sites
 
 on:
   push:
     branches:
       - main
+      - dev
   repository_dispatch:
     types:
       - wordpress-content-updated
@@ -13,13 +14,56 @@ permissions:
   contents: read
 
 concurrency:
-  group: production-static-release
+  group: shared-static-deployment
   cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
-    if: github.ref == 'refs/heads/main'
+  deploy-development:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
+    environment:
+      name: dev
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    env:
+      PFOY_WORDPRESS_API_ROOT: ${{ vars.PFOY_WORDPRESS_API_ROOT }}
+      VITE_PUBLIC_SITE_ORIGIN: https://${{ github.repository_owner }}.github.io
+      VITE_CMS_ORIGIN: ${{ vars.PFOY_CMS_ORIGIN }}
+      PFOY_GITHUB_PAGES_BASE_PATH: /${{ github.event.repository.name }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.ref }}
+          clean: true
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: 22.17.0
+          cache: npm
+      - name: Start with clean generated output
+        run: rm -rf build content-snapshot .svelte-kit
+      - run: npm ci
+      - name: Fetch current WordPress snapshot
+        run: npm run content:snapshot
+      - name: Build the development site
+        run: npm run build
+      - name: Add static response headers
+        run: cp .github/workflows/_headers build/_headers
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build
+      - name: Deploy development artifact to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  build-and-deploy:
+    needs: deploy-development
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
     env:
       PFOY_WORDPRESS_API_ROOT: ${{ vars.PFOY_WORDPRESS_API_ROOT }}
       PFOY_REQUIRE_SOURCE_REVISION: 'true'
@@ -37,7 +81,7 @@ jobs:
           clean: true
       - name: Record checked-out source identity
         id: source-code
-        run: bash scripts/deploy-release-identity.sh
+        run: printf 'release_sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4.4.0
         with:
           node-version: 22.17.0
@@ -50,11 +94,16 @@ jobs:
           PFOY_PUBLICATION_ACK_SECRET: ${{ secrets.PFOY_PUBLICATION_ACK_SECRET }}
         run: bash scripts/deploy-require-config.sh
       - name: Start with clean generated output
-        run: bash scripts/deploy-clean.sh
+        run: rm -rf build content-snapshot .svelte-kit
       - run: npm ci
       - name: Read current WordPress source revision
         id: source
         run: node --experimental-strip-types scripts/publication.ts source
+      - name: Stop production when the development stage fails
+        if: needs.deploy-development.result != 'success'
+        run: |
+          echo "::error::The dev GitHub Pages stage failed; production deployment is blocked."
+          exit 1
       - name: Fetch a complete matching WordPress snapshot
         id: snapshot
         env:
@@ -66,11 +115,11 @@ jobs:
           EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
           PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
         run: |
-          bash scripts/deploy-build.sh
+          npm run build
           node --experimental-strip-types scripts/publication.ts write-release-marker "$EXPECTED_SOURCE_REVISION" "$PFOY_RELEASE_SHA"
       - name: Add static response headers
         id: headers
-        run: bash scripts/deploy-headers.sh
+        run: cp .github/workflows/_headers build/_headers
       - name: Require Cloudflare deployment credentials for Workers
         id: cloudflare
         if: env.PFOY_DEPLOYMENT_TARGET == 'workers'
@@ -151,6 +200,7 @@ jobs:
       - name: Report failed or superseded release to WordPress
         if: failure() && steps.acknowledge.outcome != 'failure' && steps.source.outputs.source_revision != ''
         env:
+          DEV_STAGE_OUTCOME: ${{ needs.deploy-development.result }}
           EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
           PFOY_PUBLICATION_ACK_SECRET: ${{ secrets.PFOY_PUBLICATION_ACK_SECRET }}
           PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
