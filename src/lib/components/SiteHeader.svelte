@@ -1,11 +1,12 @@
 <script lang="ts">
   import { basePath as base } from '#lib/config.ts';
+  import logo from '../../images/platefullofyum-logo.svg';
   import { onMount } from 'svelte';
   import type { TaxonomyTerm } from '#lib/content/types.ts';
   let { categories = [], aboutPath = null }: { categories?: TaxonomyTerm[]; aboutPath?: string | null } = $props();
   let menuOpen = $state(true);
   let categoryMenuOpen = $state(false);
-  function closeCategoryMenus() {
+  function closeMenus() {
     categoryMenuOpen = false;
     menuOpen = !window.matchMedia('(max-width: 600px)').matches;
   }
@@ -21,20 +22,20 @@
 <a class="skip" href="#main">Skip to content</a>
 <header>
   <a class="brand" href="{base}/" aria-label="Plate Full of Yum home">
-    plate full <em>of</em> yum<span aria-hidden="true"> ✳</span>
+    <img class="brand-logo" src={logo} alt="" width="689" height="180" />
   </a>
   <details class="nav-menu" bind:open={menuOpen}>
     <summary aria-label="Open main navigation">Menu</summary>
     <nav aria-label="Main navigation">
-      <a href="{base}/recipes/">Recipes</a>
-      {#if aboutPath}<a href="{base}{aboutPath}">About Asha</a>{/if}
+      <a href="{base}/recipes/" onclick={closeMenus}>Recipes</a>
+      {#if aboutPath}<a href="{base}{aboutPath}" onclick={closeMenus}>About Asha</a>{/if}
       {#if categories.length}
         <details class="category-menu" bind:open={categoryMenuOpen}>
           <summary>Browse categories</summary>
-          <div class="category-links">{#each categories as category (category.id)}<a href="{base}{category.path}" onclick={closeCategoryMenus}>{category.name}</a>{/each}</div>
+          <div class="category-links">{#each categories as category (category.id)}<a href="{base}{category.path}" onclick={closeMenus}>{category.name}</a>{/each}</div>
         </details>
       {/if}
-      <a href="{base}/recipes/#search">Search</a>
+      <a href="{base}/recipes/#search" onclick={closeMenus}>Search</a>
     </nav>
   </details>
 </header>
@@ -44,6 +45,8 @@
   .nav-menu > summary { display: none; }
   .category-menu { position: relative; }
   nav summary { list-style: none; color: var(--ink); cursor: pointer; }
+  header { padding: 12px 0; }
+  .brand-logo { display: block; width: clamp(170px, 18vw, 220px); height: auto; }
   nav summary::-webkit-details-marker { display: none; }
   .category-links { position: absolute; z-index: 3; right: 0; top: calc(100% + .5rem); min-width: 12rem; padding: .6rem; display: grid; gap: .25rem; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 .5rem 1.5rem #25392e1c; }
   .category-links a { padding: .5rem; }
