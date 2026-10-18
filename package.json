@@ -1,0 +1,35 @@
+{
+  "name": "plate-full-of-yum",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  },
+  "engines": {
+    "node": ">=22.17.0"
+  },
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:php": "node scripts/check-php-syntax.mjs",
+    "test:content": "node --experimental-strip-types --test tests/*.test.mjs",
+    "content:snapshot": "node --env-file-if-exists=.env --experimental-strip-types scripts/fetch-content.ts"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "4.0.0",
+    "@sveltejs/kit": "3.0.1",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/node": "26.6.5",
+    "@types/sanitize-html": "2.16.2",
+    "parse5": "8.0.1",
+    "php-parser": "3.7.0",
+    "sanitize-html": "2.18.0",
+    "svelte": "5.57.2",
+    "svelte-check": "4.7.6",
+    "typescript": "6.0.3",
+    "vite": "8.3.4"
+  }
+}

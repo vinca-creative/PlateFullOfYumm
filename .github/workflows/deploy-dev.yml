@@ -1,0 +1,55 @@
+name: Publish development site to GitHub Pages
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages-development
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PFOY_WORDPRESS_API_ROOT: ${{ vars.PFOY_WORDPRESS_API_ROOT }}
+      VITE_PUBLIC_SITE_ORIGIN: https://${{ github.repository_owner }}.github.io
+      VITE_CMS_ORIGIN: ${{ vars.PFOY_CMS_ORIGIN }}
+      PFOY_GITHUB_PAGES_BASE_PATH: /${{ github.event.repository.name }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: 22.17.0
+          cache: npm
+      - name: Start with clean generated output
+        run: bash scripts/deploy-clean.sh
+      - run: npm ci
+      - name: Fetch current WordPress snapshot
+        run: npm run content:snapshot
+      - name: Build the development site
+        run: bash scripts/deploy-build.sh
+      - name: Add static response headers
+        run: bash scripts/deploy-headers.sh
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy development artifact to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

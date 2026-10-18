@@ -1,0 +1,171 @@
+name: Publish production static site
+
+on:
+  push:
+    branches:
+      - main
+  repository_dispatch:
+    types:
+      - wordpress-content-updated
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-static-release
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      PFOY_WORDPRESS_API_ROOT: ${{ vars.PFOY_WORDPRESS_API_ROOT }}
+      PFOY_REQUIRE_SOURCE_REVISION: 'true'
+      VITE_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
+      PFOY_DEPLOYMENT_TARGET: workers
+      PFOY_PAGES_PROJECT_NAME: ${{ vars.PFOY_PAGES_PROJECT_NAME }}
+      PFOY_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
+      VITE_CMS_ORIGIN: ${{ vars.PFOY_CMS_ORIGIN }}
+    steps:
+      - name: Check out current production code
+        id: checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          ref: main
+          clean: true
+      - name: Record checked-out source identity
+        id: source-code
+        run: bash scripts/deploy-release-identity.sh
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: 22.17.0
+          cache: npm
+      - name: Require WordPress and callback configuration
+        env:
+          PFOY_WORDPRESS_API_ROOT: ${{ vars.PFOY_WORDPRESS_API_ROOT }}
+          PFOY_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
+          PFOY_CMS_ORIGIN: ${{ vars.PFOY_CMS_ORIGIN }}
+          PFOY_PUBLICATION_ACK_SECRET: ${{ secrets.PFOY_PUBLICATION_ACK_SECRET }}
+        run: bash scripts/deploy-require-config.sh
+      - name: Start with clean generated output
+        run: bash scripts/deploy-clean.sh
+      - run: npm ci
+      - name: Read current WordPress source revision
+        id: source
+        run: node --experimental-strip-types scripts/publication.ts source
+      - name: Fetch a complete matching WordPress snapshot
+        id: snapshot
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
+        run: npm run content:snapshot
+      - name: Build the complete static site
+        id: build
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
+          PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
+        run: |
+          bash scripts/deploy-build.sh
+          node --experimental-strip-types scripts/publication.ts write-release-marker "$EXPECTED_SOURCE_REVISION" "$PFOY_RELEASE_SHA"
+      - name: Add static response headers
+        id: headers
+        run: bash scripts/deploy-headers.sh
+      - name: Require Cloudflare deployment credentials for Workers
+        id: cloudflare
+        if: env.PFOY_DEPLOYMENT_TARGET == 'workers'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          PFOY_CREDENTIAL_ERROR: Workers deployment requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+        run: bash scripts/deploy-require-cloudflare.sh
+      - name: Require Pages project configuration for selected target
+        id: pages-project
+        if: env.PFOY_DEPLOYMENT_TARGET == 'pages'
+        env:
+          PFOY_PAGES_PROJECT_NAME: ${{ vars.PFOY_PAGES_PROJECT_NAME }}
+        run: bash scripts/deploy-require-pages-project.sh
+      - name: Require Pages deployment credentials
+        id: pages-cloudflare
+        if: env.PFOY_DEPLOYMENT_TARGET == 'pages'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          PFOY_CREDENTIAL_ERROR: Pages deployment requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+        run: bash scripts/deploy-require-cloudflare.sh
+      - name: Capture current public routes for removal checks
+        id: baseline
+        run: node --experimental-strip-types scripts/publication.ts capture-smoke-baseline
+      - name: Require Pages production branch and configured origin
+        id: pages-branch
+        if: env.PFOY_DEPLOYMENT_TARGET == 'pages'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          PFOY_PAGES_PROJECT_NAME: ${{ vars.PFOY_PAGES_PROJECT_NAME }}
+          PFOY_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
+        run: bash scripts/deploy-pages-preflight.sh
+      - name: Reject superseded WordPress snapshot immediately before deploy
+        id: predeploy
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
+        run: node --experimental-strip-types scripts/publication.ts assert-current "$EXPECTED_SOURCE_REVISION"
+      - name: Deploy complete static output to Workers Static Assets
+        id: deploy
+        if: env.PFOY_DEPLOYMENT_TARGET == 'workers'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: bash scripts/deploy-workers.sh
+      - name: Deploy complete static output to Cloudflare Pages production
+        id: pages-deploy
+        if: env.PFOY_DEPLOYMENT_TARGET == 'pages'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          PFOY_PAGES_PROJECT_NAME: ${{ vars.PFOY_PAGES_PROJECT_NAME }}
+          PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
+        run: bash scripts/deploy-pages.sh
+      - name: Confirm Pages production deployment identity
+        id: pages-verify
+        if: env.PFOY_DEPLOYMENT_TARGET == 'pages'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          PFOY_PAGES_PROJECT_NAME: ${{ vars.PFOY_PAGES_PROJECT_NAME }}
+          PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
+        run: bash scripts/deploy-pages-verify.sh
+      - name: Verify deployed pages, assets, removals and 404 behavior
+        id: smoke
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
+          PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
+        run: node --experimental-strip-types scripts/publication.ts smoke
+      - name: Acknowledge verified WordPress source revision
+        id: acknowledge
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
+          PFOY_PUBLICATION_ACK_SECRET: ${{ secrets.PFOY_PUBLICATION_ACK_SECRET }}
+          PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
+        run: node --experimental-strip-types scripts/publication.ts acknowledge deployed "$EXPECTED_SOURCE_REVISION"
+      - name: Report failed or superseded release to WordPress
+        if: failure() && steps.acknowledge.outcome != 'failure' && steps.source.outputs.source_revision != ''
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
+          PFOY_PUBLICATION_ACK_SECRET: ${{ secrets.PFOY_PUBLICATION_ACK_SECRET }}
+          PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
+          PFOY_DEPLOYMENT_STATE: ${{ env.PFOY_DEPLOYMENT_STATE || 'not_started' }}
+          CLOUDFLARE_OUTCOME: ${{ steps.cloudflare.outcome }}
+          PAGES_CLOUDFLARE_OUTCOME: ${{ steps.pages-cloudflare.outcome }}
+          PAGES_PROJECT_OUTCOME: ${{ steps.pages-project.outcome }}
+          PAGES_BRANCH_OUTCOME: ${{ steps.pages-branch.outcome }}
+          SNAPSHOT_OUTCOME: ${{ steps.snapshot.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          HEADERS_OUTCOME: ${{ steps.headers.outcome }}
+          PREDEPLOY_OUTCOME: ${{ steps.predeploy.outcome }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          PAGES_DEPLOY_OUTCOME: ${{ steps.pages-deploy.outcome }}
+          PAGES_VERIFY_OUTCOME: ${{ steps.pages-verify.outcome }}
+        run: |
+          failure_code=$(bash scripts/deploy-failure-code.sh)
+          node --experimental-strip-types scripts/publication.ts acknowledge failed "$EXPECTED_SOURCE_REVISION" "$failure_code" "$PFOY_DEPLOYMENT_STATE"

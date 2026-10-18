@@ -1,0 +1,19 @@
+import type { PublicContentItem } from '#lib/content/types.ts';
+
+export function projectRecipe(item: PublicContentItem) {
+  return {
+    post_id: item.post_id,
+    title: item.title,
+    excerpt: item.excerpt || item.recipe?.description || '',
+    path: item.path,
+    image: item.image,
+    categories: item.categories.map(({ id, name, path }) => ({ id, name, path }))
+  };
+}
+
+export function projectSearchRecipe(item: PublicContentItem) {
+  return {
+    ...projectRecipe(item),
+    ingredients: item.recipe?.ingredients.flatMap((group) => group.items.map((ingredient) => ingredient.text)) ?? []
+  };
+}
