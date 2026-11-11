@@ -4,22 +4,111 @@ on:
   push:
     branches:
       - main
-      - dev
-  repository_dispatch:
-    types:
-      - wordpress-content-updated
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Keep the build and both ordered deployments in one non-canceling release lane.
 concurrency:
-  group: shared-static-deployment
+  group: static-deployment-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
-  deploy-development:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+  build-release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      PFOY_WORDPRESS_API_ROOT: ${{ vars.PFOY_WORDPRESS_API_ROOT }}
+      PFOY_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
+      PFOY_CMS_ORIGIN: ${{ vars.PFOY_CMS_ORIGIN }}
+      VITE_CMS_ORIGIN: ${{ vars.PFOY_CMS_ORIGIN }}
+      VITE_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
+      PAGES_ORIGIN: https://${{ github.repository_owner }}.github.io
+      PAGES_BASE_PATH: /${{ github.event.repository.name }}
+    steps:
+      - name: Check out main source
+        uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: 22.17.0
+          cache: npm
+      - name: Require public content configuration
+        run: |
+          for name in PFOY_WORDPRESS_API_ROOT PFOY_PUBLIC_SITE_ORIGIN PFOY_CMS_ORIGIN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Required public content configuration is missing: $name."
+              exit 1
+            fi
+          done
+      - name: Start with clean generated output
+        run: rm -rf build content-snapshot .svelte-kit release-artifact
+      - run: npm ci
+      - name: Fetch complete current public WordPress snapshot
+        run: npm run content:snapshot
+      - name: Preserve content snapshot for Pages URL transformation
+        run: cp -a content-snapshot "$RUNNER_TEMP/production-content-snapshot"
+      - name: Transform snapshot for GitHub Pages origin
+        run: node --experimental-strip-types scripts/transform-snapshot-origin.ts "$PFOY_PUBLIC_SITE_ORIGIN" "$PAGES_ORIGIN" "$PAGES_BASE_PATH"
+      - name: Build GitHub Pages development site
+        env:
+          VITE_PUBLIC_SITE_ORIGIN: ${{ format('https://{0}.github.io', github.repository_owner) }}
+          VITE_ADS_ENABLED: 'false'
+          VITE_ADS_PUBLISHER_ID: ca-pub-3611846975019947
+          VITE_ADS_FIRST_SLOT: '9535700852'
+          VITE_ADS_CMP_URL: ${{ vars.PFOY_ADS_CMP_URL }}
+          VITE_ADS_PRIVACY_URL: ${{ vars.PFOY_ADS_PRIVACY_URL }}
+          VITE_ADS_SELLER_LINE: ${{ vars.PFOY_ADS_SELLER_LINE }}
+          PFOY_GITHUB_PAGES_BASE_PATH: /${{ github.event.repository.name }}
+        run: npm run build
+      - name: Audit GitHub Pages static artifact
+        run: |
+          mkdir -p release-artifact
+          node --experimental-strip-types scripts/static-artifact-audit.ts build content-snapshot/snapshot.json "$PAGES_BASE_PATH" release-artifact/pages-route-asset-manifest.json
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build
+          retention-days: 7
+      - name: Restore the validated public snapshot
+        run: |
+          rm -rf content-snapshot
+          cp -a "$RUNNER_TEMP/production-content-snapshot" content-snapshot
+      - name: Build root-path Cloudflare site
+        env:
+          VITE_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
+          VITE_ADS_ENABLED: 'false'
+          VITE_ADS_PUBLISHER_ID: ca-pub-3611846975019947
+          VITE_ADS_FIRST_SLOT: '9535700852'
+          VITE_ADS_CMP_URL: ${{ vars.PFOY_ADS_CMP_URL }}
+          VITE_ADS_PRIVACY_URL: ${{ vars.PFOY_ADS_PRIVACY_URL }}
+          VITE_ADS_SELLER_LINE: ${{ vars.PFOY_ADS_SELLER_LINE }}
+          PFOY_GITHUB_PAGES_BASE_PATH: ''
+        run: |
+          rm -rf build .svelte-kit
+          npm run build
+          node --experimental-strip-types scripts/write-media-redirects.ts
+          cp .github/workflows/_headers build/_headers
+          node --experimental-strip-types scripts/static-artifact-audit.ts build content-snapshot/snapshot.json '' release-artifact/cloudflare-route-asset-manifest.json
+          node --experimental-strip-types scripts/publication.ts capture-smoke-baseline
+          mkdir -p release-artifact
+          cp "$RUNNER_TEMP/pfoy-smoke-baseline.json" release-artifact/smoke-baseline.json
+          cp -a build release-artifact/build
+      - name: Upload complete production artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-site-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release-artifact
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy-dev:
+    needs: build-release
+    if: needs.build-release.result == 'success' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: dev
@@ -28,125 +117,76 @@ jobs:
       contents: read
       pages: write
       id-token: write
-    env:
-      PFOY_WORDPRESS_API_ROOT: ${{ vars.PFOY_WORDPRESS_API_ROOT }}
-      VITE_PUBLIC_SITE_ORIGIN: https://${{ github.repository_owner }}.github.io
-      VITE_CMS_ORIGIN: ${{ vars.PFOY_CMS_ORIGIN }}
-      PFOY_GITHUB_PAGES_BASE_PATH: /${{ github.event.repository.name }}
     steps:
-      - uses: actions/checkout@v4.2.2
+      - name: Deploy GitHub Pages development artifact
+        id: deployment
+        uses: actions/deploy-pages@v4
         with:
-          ref: ${{ github.ref }}
+          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Check out Pages smoke verifier
+        uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.sha }}
           clean: true
       - uses: actions/setup-node@v4.4.0
         with:
           node-version: 22.17.0
-          cache: npm
-      - name: Start with clean generated output
-        run: rm -rf build content-snapshot .svelte-kit
-      - run: npm ci
-      - name: Fetch current WordPress snapshot
-        run: npm run content:snapshot
-      - name: Build the development site
-        run: npm run build
-      - name: Add static response headers
-        run: cp .github/workflows/_headers build/_headers
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: build
-      - name: Deploy development artifact to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Smoke-test deployed GitHub Pages site
+        env:
+          PAGES_PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          PAGES_BASE_PATH: /${{ github.event.repository.name }}
+        run: node scripts/pages-deployment-smoke.mjs
 
-  build-and-deploy:
-    needs: deploy-development
-    if: always() && github.ref == 'refs/heads/main'
+  deploy-prod:
+    needs: [build-release, deploy-dev]
+    if: needs.build-release.result == 'success' && needs.deploy-dev.result == 'success' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: prod
     env:
       PFOY_WORDPRESS_API_ROOT: ${{ vars.PFOY_WORDPRESS_API_ROOT }}
-      PFOY_REQUIRE_SOURCE_REVISION: 'true'
-      VITE_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
-      PFOY_DEPLOYMENT_TARGET: workers
-      PFOY_PAGES_PROJECT_NAME: ${{ vars.PFOY_PAGES_PROJECT_NAME }}
       PFOY_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
-      VITE_CMS_ORIGIN: ${{ vars.PFOY_CMS_ORIGIN }}
+      PFOY_CMS_ORIGIN: ${{ vars.PFOY_CMS_ORIGIN }}
+      PFOY_DEPLOYMENT_TARGET: ${{ vars.PFOY_DEPLOYMENT_TARGET || 'workers' }}
+      PFOY_PAGES_PROJECT_NAME: ${{ vars.PFOY_PAGES_PROJECT_NAME }}
+      PFOY_RELEASE_SHA: ${{ github.sha }}
     steps:
-      - name: Check out current production code
-        id: checkout
+      - name: Check out deployment helpers
         uses: actions/checkout@v4.2.2
         with:
-          ref: main
+          ref: ${{ github.sha }}
           clean: true
-      - name: Record checked-out source identity
-        id: source-code
-        run: printf 'release_sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4.4.0
         with:
           node-version: 22.17.0
-          cache: npm
-      - name: Require WordPress and callback configuration
-        env:
-          PFOY_WORDPRESS_API_ROOT: ${{ vars.PFOY_WORDPRESS_API_ROOT }}
-          PFOY_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
-          PFOY_CMS_ORIGIN: ${{ vars.PFOY_CMS_ORIGIN }}
-          PFOY_PUBLICATION_ACK_SECRET: ${{ secrets.PFOY_PUBLICATION_ACK_SECRET }}
-        run: bash scripts/deploy-require-config.sh
-      - name: Start with clean generated output
-        run: rm -rf build content-snapshot .svelte-kit
-      - run: npm ci
-      - name: Read current WordPress source revision
-        id: source
-        run: node --experimental-strip-types scripts/publication.ts source
-      - name: Stop production when the development stage fails
-        if: needs.deploy-development.result != 'success'
+      - name: Download this run's production artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: production-site-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release-artifact
+      - name: Restore production artifact and route baseline
         run: |
-          echo "::error::The dev GitHub Pages stage failed; production deployment is blocked."
-          exit 1
-      - name: Fetch a complete matching WordPress snapshot
-        id: snapshot
-        env:
-          EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
-        run: npm run content:snapshot
-      - name: Build the complete static site
-        id: build
-        env:
-          EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
-          PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
+          cp -a release-artifact/build build
+          cp release-artifact/smoke-baseline.json "$RUNNER_TEMP/pfoy-smoke-baseline.json"
+      - name: Require supported Cloudflare deployment target
         run: |
-          npm run build
-          node --experimental-strip-types scripts/publication.ts write-release-marker "$EXPECTED_SOURCE_REVISION" "$PFOY_RELEASE_SHA"
-      - name: Add static response headers
-        id: headers
-        run: cp .github/workflows/_headers build/_headers
-      - name: Require Cloudflare deployment credentials for Workers
-        id: cloudflare
-        if: env.PFOY_DEPLOYMENT_TARGET == 'workers'
+          case "$PFOY_DEPLOYMENT_TARGET" in
+            workers|pages) ;;
+            *) echo "::error::PFOY_DEPLOYMENT_TARGET must be workers or pages."; exit 1 ;;
+          esac
+      - name: Require Cloudflare credentials
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          PFOY_CREDENTIAL_ERROR: Workers deployment requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+          PFOY_CREDENTIAL_ERROR: Cloudflare deployment requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
         run: bash scripts/deploy-require-cloudflare.sh
-      - name: Require Pages project configuration for selected target
-        id: pages-project
+      - name: Require Pages project configuration for selected fallback
         if: env.PFOY_DEPLOYMENT_TARGET == 'pages'
         env:
           PFOY_PAGES_PROJECT_NAME: ${{ vars.PFOY_PAGES_PROJECT_NAME }}
         run: bash scripts/deploy-require-pages-project.sh
-      - name: Require Pages deployment credentials
-        id: pages-cloudflare
-        if: env.PFOY_DEPLOYMENT_TARGET == 'pages'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          PFOY_CREDENTIAL_ERROR: Pages deployment requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
-        run: bash scripts/deploy-require-cloudflare.sh
-      - name: Capture current public routes for removal checks
-        id: baseline
-        run: node --experimental-strip-types scripts/publication.ts capture-smoke-baseline
-      - name: Require Pages production branch and configured origin
-        id: pages-branch
+      - name: Require Pages project and domain preflight
         if: env.PFOY_DEPLOYMENT_TARGET == 'pages'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -154,68 +194,29 @@ jobs:
           PFOY_PAGES_PROJECT_NAME: ${{ vars.PFOY_PAGES_PROJECT_NAME }}
           PFOY_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
         run: bash scripts/deploy-pages-preflight.sh
-      - name: Reject superseded WordPress snapshot immediately before deploy
-        id: predeploy
-        env:
-          EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
-        run: node --experimental-strip-types scripts/publication.ts assert-current "$EXPECTED_SOURCE_REVISION"
-      - name: Deploy complete static output to Workers Static Assets
-        id: deploy
+      - name: Deploy complete artifact to Workers Static Assets
         if: env.PFOY_DEPLOYMENT_TARGET == 'workers'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: bash scripts/deploy-workers.sh
-      - name: Deploy complete static output to Cloudflare Pages production
-        id: pages-deploy
+      - name: Deploy complete artifact to Cloudflare Pages Direct Upload fallback
         if: env.PFOY_DEPLOYMENT_TARGET == 'pages'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           PFOY_PAGES_PROJECT_NAME: ${{ vars.PFOY_PAGES_PROJECT_NAME }}
-          PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
+          PFOY_RELEASE_SHA: ${{ github.sha }}
         run: bash scripts/deploy-pages.sh
       - name: Confirm Pages production deployment identity
-        id: pages-verify
         if: env.PFOY_DEPLOYMENT_TARGET == 'pages'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           PFOY_PAGES_PROJECT_NAME: ${{ vars.PFOY_PAGES_PROJECT_NAME }}
-          PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
+          PFOY_RELEASE_SHA: ${{ github.sha }}
         run: bash scripts/deploy-pages-verify.sh
-      - name: Verify deployed pages, assets, removals and 404 behavior
-        id: smoke
+      - name: Verify routes, assets, removals and real 404 responses
         env:
-          EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
-          PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
+          PFOY_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
         run: node --experimental-strip-types scripts/publication.ts smoke
-      - name: Acknowledge verified WordPress source revision
-        id: acknowledge
-        env:
-          EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
-          PFOY_PUBLICATION_ACK_SECRET: ${{ secrets.PFOY_PUBLICATION_ACK_SECRET }}
-          PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
-        run: node --experimental-strip-types scripts/publication.ts acknowledge deployed "$EXPECTED_SOURCE_REVISION"
-      - name: Report failed or superseded release to WordPress
-        if: failure() && steps.acknowledge.outcome != 'failure' && steps.source.outputs.source_revision != ''
-        env:
-          DEV_STAGE_OUTCOME: ${{ needs.deploy-development.result }}
-          EXPECTED_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
-          PFOY_PUBLICATION_ACK_SECRET: ${{ secrets.PFOY_PUBLICATION_ACK_SECRET }}
-          PFOY_RELEASE_SHA: ${{ steps.source-code.outputs.release_sha }}
-          PFOY_DEPLOYMENT_STATE: ${{ env.PFOY_DEPLOYMENT_STATE || 'not_started' }}
-          CLOUDFLARE_OUTCOME: ${{ steps.cloudflare.outcome }}
-          PAGES_CLOUDFLARE_OUTCOME: ${{ steps.pages-cloudflare.outcome }}
-          PAGES_PROJECT_OUTCOME: ${{ steps.pages-project.outcome }}
-          PAGES_BRANCH_OUTCOME: ${{ steps.pages-branch.outcome }}
-          SNAPSHOT_OUTCOME: ${{ steps.snapshot.outcome }}
-          BUILD_OUTCOME: ${{ steps.build.outcome }}
-          HEADERS_OUTCOME: ${{ steps.headers.outcome }}
-          PREDEPLOY_OUTCOME: ${{ steps.predeploy.outcome }}
-          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
-          PAGES_DEPLOY_OUTCOME: ${{ steps.pages-deploy.outcome }}
-          PAGES_VERIFY_OUTCOME: ${{ steps.pages-verify.outcome }}
-        run: |
-          failure_code=$(bash scripts/deploy-failure-code.sh)
-          node --experimental-strip-types scripts/publication.ts acknowledge failed "$EXPECTED_SOURCE_REVISION" "$failure_code" "$PFOY_DEPLOYMENT_STATE"

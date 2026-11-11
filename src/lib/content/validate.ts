@@ -84,11 +84,13 @@ function taxonomy(value: unknown, at: string, category: boolean): TaxonomyTerm[]
     const base = {
       id: integer(term.id, `${at}[${index}].id`, 1),
       name: text(term.name, `${at}[${index}].name`),
-      slug: text(term.slug, `${at}[${index}].slug`)
+      slug: text(term.slug, `${at}[${index}].slug`),
+      description: text(term.description ?? '', `${at}[${index}].description`, true)
     };
-    return category
-      ? { ...base, path: publicPath(term.path, `${at}[${index}].path`) }
-      : { ...base, path: '' };
+    const path = category || (typeof term.path === 'string' && term.path !== '')
+      ? publicPath(term.path, `${at}[${index}].path`)
+      : '';
+    return { ...base, path };
   });
 }
 
@@ -284,7 +286,7 @@ function contentItem(value: unknown, at: string): PublicContentItem {
     date_modified: dateModified,
     author: { name: text(author.name, `${at}.author.name`) },
     categories: taxonomy(item.categories, `${at}.categories`, true),
-    tags: taxonomy(item.tags, `${at}.tags`, false).map(({ id, name, slug }) => ({ id, name, slug })),
+    tags: taxonomy(item.tags, `${at}.tags`, false),
     image: image(item.image, `${at}.image`),
     seo: seo(item.seo, `${at}.seo`),
     comments_open: item.comments_open,
@@ -313,4 +315,11 @@ export function parseContentPage(value: unknown): ContentPage {
   if (parsedItems.length > result.per_page) throw new Error(`content page ${result.page} exceeds its declared page size`);
   if (result.page > result.total_pages) throw new Error(`content page ${result.page} exceeds total_pages`);
   return result;
+}
+export function parseTaxonomyTerms(value: unknown, at: string): TaxonomyTerm[] {
+  const terms = taxonomy(value, at, true);
+  if (new Set(terms.map(({ id }) => id)).size !== terms.length || new Set(terms.map(({ path }) => path)).size !== terms.length) {
+    throw new Error(`${at} contains duplicate IDs or paths`);
+  }
+  return terms;
 }

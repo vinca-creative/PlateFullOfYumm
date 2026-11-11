@@ -5,6 +5,7 @@ export interface TaxonomyTerm {
   name: string;
   slug: string;
   path: string;
+  description: string;
 }
 
 export interface ImageVariant {
@@ -80,7 +81,7 @@ export interface PublicContentItem {
   date_modified: string;
   author: { name: string };
   categories: TaxonomyTerm[];
-  tags: Array<Omit<TaxonomyTerm, 'path'>>;
+  tags: TaxonomyTerm[];
   image: PublicImage | null;
   seo: PublicSeo;
   comments_open: boolean;
@@ -113,7 +114,8 @@ export interface ContentPage {
 export interface ContentSnapshot {
   contract_version: 1;
   revision: string;
-  source_revision?: string;
   fetched_at: string;
   items: PublicContentItem[];
+  categories: TaxonomyTerm[];
+  tags: TaxonomyTerm[];
 }

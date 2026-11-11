@@ -814,8 +814,9 @@ final class PFOY_Headless_Content {
 		header_remove( 'Access-Control-Allow-Credentials' );
 		header_remove( 'Access-Control-Allow-Methods' );
 		header_remove( 'Access-Control-Allow-Headers' );
+		header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
 		if ( self::comment_cors_allowed() ) {
-			header( 'Access-Control-Allow-Origin: ' . untrailingslashit( PFOY_PUBLIC_ORIGIN ) );
+			header( 'Access-Control-Allow-Origin: ' . PFOY_PUBLIC_ORIGIN );
 			header( 'Vary: Origin', false );
 			header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
 			header( 'Access-Control-Allow-Headers: Content-Type' );
@@ -913,7 +914,7 @@ final class PFOY_Headless_Content {
 		if ( '' === $name || strlen( $name ) > 100 || ! is_email( $email ) || strlen( $email ) > 254 || '' === trim( $content ) || strlen( $content ) > 10000 ) {
 			return self::fail( 'pfoy_invalid_input', 'Check the name, email, and comment length.', 400 );
 		}
-		if ( isset( $input['parent_id'] ) && ! is_scalar( $input['parent_id'] ) ) {
+		if ( isset( $input['parent_id'] ) && ( ! is_scalar( $input['parent_id'] ) || ! preg_match( '/^[1-9][0-9]*$/D', (string) $input['parent_id'] ) || (string) absint( $input['parent_id'] ) !== (string) $input['parent_id'] ) ) {
 			return self::fail( 'pfoy_invalid_parent', 'Reply target is invalid.', 400 );
 		}
 		$parent_id = isset( $input['parent_id'] ) ? absint( $input['parent_id'] ) : 0;

@@ -47,25 +47,29 @@ WordPress core `wp/v2/comments` endpoint; this helper route is not required
 for content retrieval. The plugin route is limited to published,
 non-password-protected posts and pages. Custom post types outside the static
 content contract cannot be read or commented on through these routes. Page
-size is limited to 50. The response includes public IDs, parent IDs, sanitized
-author name/text/date, page totals, and whether comments are open. Comment
-content is returned as plain text, matching the static snapshot contract. When
-a reply's approved parent is on a different page, `context` contains the
-approved public ancestor(s) needed to render the reply. Nonpublic targets
-return 404; closed posts remain readable.
+size is limited to 50. Each response includes public IDs, parent IDs,
+sanitized author name/text/date, page totals, and whether comments are open.
+Comment content is returned as plain text, matching the static snapshot
+contract. When a reply's approved parent is on a different page, `context`
+contains the approved public ancestor(s) needed to render the reply. Nonpublic
+targets return 404; closed posts remain readable, with `comments_open: false`.
+Responses are marked `no-store`; clients must fetch every page and accept the
+thread as current only after all pagination totals and reply relationships
+validate. An incomplete or failed refresh retains and labels the prior static
+snapshot instead of presenting unread pages as current.
 
 `POST /wp-json/pfoy/v1/comments` accepts only `post_id`, optional `parent_id`,
 `name`, `email`, `content`, and Turnstile `token`. It inserts through
 WordPress's native comment/moderation pipeline. The response is `202` with
 `accepted` and a `status` of `pending_review`, `approved`, or `not_public`,
 reflecting WordPress's native decision; no content or private values are
-returned. Replies require an approved parent on the
-same post. Closed posts reject submissions. Requests are limited to five per
-IP-derived HMAC rate key per hour. The plugin does not persist the raw IP for
-its rate limiter and does not send the IP to Turnstile. It calls
-`wp_new_comment` without an explicit IP override; WordPress Core or the
-hosting/proxy stack may retain request IP metadata. Configure and document
-retention for those systems according to the site's privacy requirements.
+returned. Replies require an approved parent on the same post. Closed posts
+reject submissions. Requests are limited to five per IP-derived HMAC rate key
+per hour. The plugin does not persist the raw IP for its rate limiter and does
+not send the IP to Turnstile. It calls `wp_new_comment` without an explicit IP
+override; WordPress Core or the hosting/proxy stack may retain request IP
+metadata. Configure and document retention for those systems according to the
+site's privacy requirements.
 
 Set these constants in server-side `wp-config.php` (never in frontend code):
 
@@ -109,10 +113,19 @@ snapshot as current.
 If submission feedback reports an uncertain network outcome, check the
 WordPress Comments screen for the entry before retrying to avoid duplicates.
 If the form reports pending review, wait for moderation rather than resubmitting.
+The form retains the entered draft on all rejected or uncertain outcomes and
+never inserts a pending submission into the visible approved thread. Unknown
+server outcomes are not described as public acceptance.
 When fresh reads fail, the frontend keeps and labels the last published
 snapshot; verify the endpoint and status before telling readers that the
 discussion is current. Never test by submitting to production without explicit
 owner approval.
+
+The local implementation does not establish staging acceptance. An owner-
+authorized staging WordPress site with this plugin installed, the exact
+`PFOY_PUBLIC_ORIGIN`, Turnstile site/secret/hostname configuration, and access
+to moderate a test comment is required to verify CORS, live pagination,
+challenge rejection, rate limiting, and the full moderation cycle end to end.
 
 This plugin also registers optional `pfoy_content_kind` and `pfoy_seo` REST
 fields; the public importer does not depend on either field. The classification

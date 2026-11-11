@@ -1,10 +1,10 @@
-# Spec Delta
+# consent-advertising Specification
 
 ## Purpose
 
 Allow optional, restrained advertising that respects consent and protects the readability, stability, and usability of the public recipe experience.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Explicit global advertising enablement
 Advertising SHALL be optional and controlled by explicit site configuration. When globally disabled, the frontend SHALL issue no advertising script, auction, tracking, or slot requests, regardless of stored consent. Static content and cooking controls SHALL remain available in either mode.

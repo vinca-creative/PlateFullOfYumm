@@ -15,10 +15,10 @@
 </main>
 
 <style>
-  .wrap { width: min(100% - 2.5rem, 48rem); min-height: 60vh; margin: 0 auto; padding: 4rem 0; color: var(--ink); font-family: Arial,Helvetica,sans-serif; }
-  .eyebrow { color: var(--forest); font: 700 .75rem Arial,Helvetica,sans-serif; letter-spacing: .1em; text-transform: uppercase; }
-  h1 { color: var(--ink); font: normal clamp(2.2rem, 6vw, 3.5rem)/1.1 Georgia,serif; }
-  p:not(.eyebrow) { color: var(--muted); font: 1.1rem/1.6 Arial,Helvetica,sans-serif; }
+  .wrap { width: min(100% - 2.5rem, 48rem); min-height: 60vh; margin: 0 auto; padding: 4rem 0; color: var(--ink); font-family: var(--font-body); }
+  .eyebrow { color: var(--forest); font: 700 .75rem var(--font-body); letter-spacing: .1em; text-transform: uppercase; }
+  h1 { color: var(--ink); font: normal clamp(2.2rem, 6vw, 3.5rem)/1.1 var(--font-display); }
+  p:not(.eyebrow) { color: var(--muted); font: 1.1rem/1.6 var(--font-body); }
   a { display: inline-block; padding: .7rem 1rem; border: 1px solid var(--sage); border-radius: 30px; color: var(--forest); font-size: .85rem; }
   a:hover { background: var(--forest); border-color: var(--forest); color: white; }
   a:focus-visible { outline: 3px solid #9c6349; outline-offset: 5px; }

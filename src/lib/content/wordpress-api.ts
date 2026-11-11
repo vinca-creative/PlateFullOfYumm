@@ -78,16 +78,16 @@ function taxonomy(values: unknown, category: boolean, at: string, allowedOrigins
   if (!Array.isArray(values)) throw new Error(`${at} must be an array`);
   return values.map((value, index) => {
     const term = object(value, `${at}[${index}]`);
-    const base = { id: integer(term.id, `${at}[${index}].id`, 1), name: htmlText(term.name, `${at}[${index}].name`), slug: string(term.slug, `${at}[${index}].slug`) };
+    const base = { id: integer(term.id, `${at}[${index}].id`, 1), name: htmlText(term.name, `${at}[${index}].name`), slug: string(term.slug, `${at}[${index}].slug`), description: htmlText(term.description ?? '', `${at}[${index}].description`, true) };
     let linkedPath: string | undefined;
     if (typeof term.link === 'string') {
       let url: URL;
       try { url = new URL(term.link); } catch { throw new Error(`${at}[${index}].link must be an absolute URL`); }
-      if (!allowedOrigins.includes(url.origin) || url.search || url.hash || !url.pathname.startsWith('/') || !url.pathname.endsWith('/')) throw new Error(`${at}[${index}].link is outside the configured WordPress/public origins or is not a canonical path`);
+      if (!allowedOrigins.includes(url.origin) || url.username || url.password || url.search || url.hash || !url.pathname.startsWith('/') || !url.pathname.endsWith('/')) throw new Error(`${at}[${index}].link is outside the configured WordPress/public origins or is not a canonical path`);
       linkedPath = url.pathname;
     }
     if (category && !linkedPath) throw new Error(`${at}[${index}] is missing its public category URL`);
-    return { ...base, path: category ? linkedPath! : '' };
+    return { ...base, path: linkedPath ?? '' };
   }).sort((left, right) => left.id - right.id);
 }
 function pathFromLink(link: string, publicOrigin: string, cmsOrigin: string): string {
@@ -382,6 +382,40 @@ export async function fetchWordPressSnapshot(apiRoot: string, options: Options =
     for (const [index, record] of records.entries()) if (record.status !== 'publish') throw new Error(`${type}[${index}] was returned with non-public status ${String(record.status)}`);
     return { records: records.filter((record) => typeof record.password !== 'string' || record.password === '').filter((record) => !(record.content && typeof record.content === 'object' && (record.content as RecordValue).protected === true)), pages: totalPages, totals: [totalPages, totalRecords] };
   }
+  async function collectTerms(type: 'categories' | 'tags'): Promise<{ terms: TaxonomyTerm[]; totals: number[] }> {
+    const base = new URL(`wp/v2/${type}`, api);
+    for (const [key, value] of Object.entries({ context: 'view', hide_empty: 'false', per_page: String(PAGE_SIZE), page: '1' })) base.searchParams.set(key, value);
+    async function fetchPage(pageNumber: number) {
+      const url = new URL(base);
+      url.searchParams.set('page', String(pageNumber));
+      const result = await request(url, true);
+      return { response: result.response, records: result.value };
+    }
+    const first = await fetchPage(1);
+    const totalPages = integer(first.response.headers.get('x-wp-totalpages'), `${type} X-WP-TotalPages`, 0);
+    const totalRecords = integer(first.response.headers.get('x-wp-total'), `${type} X-WP-Total`, 0);
+    if (totalPages > MAX_PAGES || ((totalRecords === 0) !== (totalPages === 0)) || !Array.isArray(first.records)) {
+      throw new Error(`${type} pagination totals are inconsistent`);
+    }
+    const pages: unknown[][] = [first.records];
+    if (totalPages > 1) {
+      const later = await mapLimit(Array.from({ length: totalPages - 1 }, (_, index) => index + 2), CONCURRENCY, async (pageNumber) => {
+        const result = await fetchPage(pageNumber);
+        if (integer(result.response.headers.get('x-wp-totalpages'), `${type} page ${pageNumber} X-WP-TotalPages`, 0) !== totalPages
+          || integer(result.response.headers.get('x-wp-total'), `${type} page ${pageNumber} X-WP-Total`, 0) !== totalRecords
+          || !Array.isArray(result.records)) throw new Error(`${type} pagination changed during retrieval`);
+        return result.records;
+      });
+      pages.push(...later);
+    }
+    const records = pages.flat();
+    if (records.length !== totalRecords) throw new Error(`${type} expected ${totalRecords} records but retrieved ${records.length}`);
+    const terms = taxonomy(records, type === 'categories', `Public ${type}`, [publicOrigin, cmsOrigin]);
+    if (terms.some((term) => !term.path) || new Set(terms.map(({ id }) => id)).size !== terms.length || new Set(terms.map(({ path }) => path)).size !== terms.length) {
+      throw new Error(`Public ${type} contain an invalid or duplicate term`);
+    }
+    return { terms, totals: [totalPages, totalRecords] };
+  }
   async function collectComments(postId: number): Promise<{ comments: NonNullable<PublicContentItem['comments']>; count: number }> {
     const base = new URL('wp/v2/comments', api);
     for (const [key, value] of Object.entries({
@@ -437,7 +471,11 @@ export async function fetchWordPressSnapshot(apiRoot: string, options: Options =
     comments.sort((left, right) => Date.parse(left.date) - Date.parse(right.date) || left.id - right.id);
     return { comments, count: totalRecords };
   }
-  const [posts, pages] = await Promise.all([collect('posts'), collect('pages')]);
+  const [posts, pages, categories, tags] = await Promise.all([collect('posts'), collect('pages'), collectTerms('categories'), collectTerms('tags')]);
+  if (new Set([...categories.terms, ...tags.terms].map(({ path }) => path)).size !== categories.terms.length + tags.terms.length) {
+    throw new Error('Public categories and tags share a taxonomy path');
+  }
+  const globalTerms = { categories: categories.terms, tags: tags.terms };
   const records = [...posts.records.map((post) => ({ post, kind: 'post' as const })), ...pages.records.map((post) => ({ post, kind: 'page' as const }))];
   const ids = new Set<number>(); const paths = new Set<string>();
   for (const { post } of records) { const id = integer(post.id, 'WordPress post id', 1); if (ids.has(id)) throw new Error(`Duplicate public post id ${id}`); ids.add(id); }
@@ -492,9 +530,10 @@ export async function fetchWordPressSnapshot(apiRoot: string, options: Options =
     return normalizeContentItem(validated, { publicOrigin, cmsOrigin });
   });
   if (mapped.length !== records.length) throw new Error(`Snapshot expected ${records.length} eligible records but mapped ${mapped.length}`);
-  const projection = JSON.stringify(mapped);
-  const revision = await sha256(projection);
-  const [secondPosts, secondPages] = await Promise.all([collect('posts'), collect('pages')]);
+  const revision = await sha256(JSON.stringify({ items: mapped, ...globalTerms }));
+  const [secondPosts, secondPages, secondCategories, secondTags] = await Promise.all([collect('posts'), collect('pages'), collectTerms('categories'), collectTerms('tags')]);
+  if (secondCategories.totals.some((total, index) => total !== categories.totals[index]) || secondTags.totals.some((total, index) => total !== tags.totals[index])) throw new Error('WordPress taxonomy totals changed during retrieval');
+  if (JSON.stringify(secondCategories.terms) !== JSON.stringify(categories.terms) || JSON.stringify(secondTags.terms) !== JSON.stringify(tags.terms)) throw new Error('WordPress taxonomy changed during retrieval');
   if (secondPosts.totals[0] !== posts.totals[0] || secondPosts.totals[1] !== posts.totals[1] || secondPages.totals[0] !== pages.totals[0] || secondPages.totals[1] !== pages.totals[1]) throw new Error('WordPress content totals changed during retrieval');
   const secondRecords = [...secondPosts.records.map((post) => ({ post, kind: 'post' as const })), ...secondPages.records.map((post) => ({ post, kind: 'page' as const }))];
   const secondIds = secondRecords.map(({ post }) => integer(post.id, 'WordPress post id', 1)).sort((a, b) => a - b);
@@ -523,7 +562,7 @@ export async function fetchWordPressSnapshot(apiRoot: string, options: Options =
     const seo = await resolvedSeo(post, item.post_id, item.path, link, item.excerpt);
     return { ...item, seo: { title: seo.title!, description: seo.description!, canonical: seo.canonical!, robots: seo.robots!, og_title: seo.og_title!, og_description: seo.og_description!, og_image: seo.og_image ?? null } };
   });
-  const secondRevision = await sha256(JSON.stringify(secondMapped));
+  const secondRevision = await sha256(JSON.stringify({ items: secondMapped, categories: secondCategories.terms, tags: secondTags.terms }));
   if (revision !== secondRevision) throw new Error(`Public content revision changed during retrieval (started at ${revision}, ended at ${secondRevision})`);
-  return { contract_version: 1, revision, fetched_at: new Date().toISOString(), items: mapped };
+  return { contract_version: 1, revision, fetched_at: new Date().toISOString(), items: mapped, ...globalTerms };
 }

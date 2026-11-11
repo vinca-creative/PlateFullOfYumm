@@ -1,3 +1,4 @@
+import { validateAdsConfig } from './advertising.ts';
 const env = import.meta.env;
 
 export const basePath = env.BASE_URL === '/' ? '' : env.BASE_URL.replace(/\/$/, '');
@@ -16,15 +17,21 @@ function publicOrigin(value: string): string {
 }
 
 /** Public configuration only; every VITE_ value can be exposed to browsers. */
-const adsRequested = env.VITE_ADS_ENABLED === 'true';
-if (adsRequested) {
-  throw new Error('Advertising cannot be enabled: a certified consent platform and verified publisher configuration are not installed.');
-}
+const ads = validateAdsConfig({
+  enabled: env.VITE_ADS_ENABLED,
+  cmpUrl: env.VITE_ADS_CMP_URL,
+  publisherId: env.VITE_ADS_PUBLISHER_ID,
+  firstSlot: env.VITE_ADS_FIRST_SLOT,
+  secondSlot: env.VITE_ADS_SECOND_SLOT,
+  privacyUrl: env.VITE_ADS_PRIVACY_URL,
+  sellerLine: env.VITE_ADS_SELLER_LINE
+});
 
 export const publicConfig = {
   siteOrigin: publicOrigin(env.VITE_PUBLIC_SITE_ORIGIN || 'https://platefullofyum.com'),
   cmsOrigin: env.VITE_CMS_ORIGIN || '',
-  adsEnabled: false,
+  adsEnabled: ads.enabled,
+  ads,
   turnstileSiteKey: env.VITE_TURNSTILE_SITE_KEY || ''
 } as const;
 

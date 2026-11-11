@@ -47,7 +47,6 @@ async function runSnapshot(cwd, apiRoot) {
         PFOY_WORDPRESS_API_ROOT: apiRoot,
         VITE_PUBLIC_SITE_ORIGIN: 'https://platefullofyum.com',
         VITE_CMS_ORIGIN: new URL(apiRoot).origin,
-        PFOY_REQUIRE_SOURCE_REVISION: 'false'
       },
       stdio: ['ignore', 'pipe', 'pipe']
     });

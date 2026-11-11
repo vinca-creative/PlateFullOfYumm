@@ -5,11 +5,11 @@ import { projectRecipe } from '#lib/server/recipe-projection.ts';
 export const prerender = true;
 
 export const load: PageServerLoad = () => {
-  const items = getSnapshot().items;
+  const snapshot = getSnapshot();
+  const items = snapshot.items;
   const sorted = [...items].sort((a, b) => Date.parse(b.date_published) - Date.parse(a.date_published));
   const recipes = sorted.filter((item) => item.kind === 'recipe');
-  const categories = new Map(items.flatMap((item) => item.categories.map(({ id, name, path, slug }) => [id, { id, name, path, slug }] as const)));
-  const categoryList = [...categories.values()];
+  const categoryList = snapshot.categories.map(({ id, name, path, slug }) => ({ id, name, path, slug }));
   const articles = sorted.filter((item) => item.kind === 'article');
   const balancedBitesArticle = articles.find((item) => item.categories.some((category) => category.slug === 'balanced-bites')) ?? null;
   const balancedBitesCategory = categoryList.find((category) => category.slug === 'balanced-bites') ?? null;

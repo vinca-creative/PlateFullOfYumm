@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseContentPage } from '../src/lib/content/validate.ts';
+import { parseContentPage, parseTaxonomyTerms } from '../src/lib/content/validate.ts';
 import { normalizeContentItem } from '../src/lib/content/normalize.ts';
 import { projectRecipe, projectSearchRecipe } from '../src/lib/server/recipe-projection.ts';
 function item(overrides = {}) {
@@ -42,6 +42,25 @@ test('sanitizes article HTML and maps CMS links onto the public origin', () => {
   assert.doesNotMatch(normalized.content_html, /onclick|javascript:|<script|alert/);
 });
 
+test('removes WordPress query pagination blocks that link to REST page APIs', () => {
+  const normalized = normalizeContentItem(item({
+    content_html: '<p>Keep this story.</p><nav class="wp-block-query-pagination"><a href="https://cms.example.test/wp-json/wp/v2/pages/page/2/?page=1">2</a></nav><p>Keep this too.</p>'
+  }), { publicOrigin: 'https://platefullofyum.com', cmsOrigin: 'https://cms.example.test' });
+
+  assert.match(normalized.content_html, /Keep this story\./);
+  assert.match(normalized.content_html, /Keep this too\./);
+  assert.doesNotMatch(normalized.content_html, /wp-json|wp-block-query-pagination/);
+});
+
+test('drops source REST API links instead of publishing them as local pages', () => {
+  const normalized = normalizeContentItem(item({
+    content_html: '<div><span>1</span><a href="https://cms.example.test/wp-json/wp/v2/pages/page/2/?page=1">2</a><a href="https://cms.example.test/banana-bread/">Current article</a></div>'
+  }), { publicOrigin: 'https://platefullofyum.com', cmsOrigin: 'https://cms.example.test' });
+
+  assert.doesNotMatch(normalized.content_html, /wp-json/);
+  assert.match(normalized.content_html, /href="https:\/\/platefullofyum\.com\/banana-bread\/"/);
+});
+
 test('replaces the matching ID-only Create region with a safe recipe marker', () => {
   const normalized = normalizeContentItem(item({
     kind: 'recipe',
@@ -60,6 +79,24 @@ test('rejects a Create card embedded in an article', () => {
   assert.throws(() => normalizeContentItem(item({
     content_html: '<section id="mv-creation-1164" class="mv-create-card">card</section>'
   })), /does not match its declared content kind and card ID/);
+});
+
+test('preserves linked WordPress tag archive paths in the validated snapshot', () => {
+  const linkedTag = { id: 14, name: 'Family', slug: 'family', path: '/tag/family/' };
+  const source = item({ tags: [linkedTag] });
+  const parsed = parseContentPage({
+    contract_version: 1, revision: 'test', page: 1, per_page: 1, total_pages: 1,
+    total_records: 1, complete: true, items: [source]
+  }).items[0];
+
+  assert.equal(parsed.tags[0].path, linkedTag.path);
+  assert.equal(item().tags[0].path, '');
+});
+test('validates standalone empty taxonomy records and fails closed on duplicate or invalid paths', () => {
+  const terms = parseTaxonomyTerms([{ id: 24, name: 'Kid-friendly', slug: 'kid-friendly', path: '/category/kid-friendly/', description: 'Family meals' }], 'categories');
+  assert.equal(terms[0].description, 'Family meals');
+  assert.throws(() => parseTaxonomyTerms([{ ...terms[0], path: 'https://cms.example/category/kid-friendly/' }], 'categories'), /public path/);
+  assert.throws(() => parseTaxonomyTerms([terms[0], terms[0]], 'categories'), /duplicate IDs or paths/);
 });
 test('validates public comment snapshots and excludes private or unassociated data', () => {
   const source = item({

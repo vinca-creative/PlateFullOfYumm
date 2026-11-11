@@ -20,8 +20,10 @@ export const GET: RequestHandler = () => {
     const canonical = new URL(item.seo.canonical);
     urls.set(base && canonical.origin === publicConfig.siteOrigin ? `${canonical.origin}${base}${canonical.pathname}${canonical.search}${canonical.hash}` : item.seo.canonical, item.date_modified);
   }
-  const categories = new Map(snapshot.items.flatMap((item) => item.categories.map((term) => [term.path, term] as const)));
-  for (const category of categories.values()) urls.set(`${publicConfig.siteOrigin}${base}${category.path}`, fetchedAt);
+  const archives = new Map([...snapshot.categories, ...snapshot.tags]
+    .filter((term) => term.path)
+    .map((term) => [term.path, term] as const));
+  for (const archive of archives.values()) urls.set(`${publicConfig.siteOrigin}${base}${archive.path}`, fetchedAt);
   const body = [...urls].map(([loc, modified]) => `<url><loc>${xml(loc)}</loc><lastmod>${xml(new Date(modified).toISOString())}</lastmod></url>`).join('');
   return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${body}</urlset>`, { headers: { 'content-type': 'application/xml; charset=utf-8' } });
 };

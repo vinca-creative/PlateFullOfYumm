@@ -1,14 +1,18 @@
 import { parseFragment, serializeOuter } from 'parse5';
 import type { DefaultTreeAdapterMap } from 'parse5';
 import { basePath as base } from '#lib/config.ts';
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import type { EntryGenerator, PageServerLoad } from './$types';
 import { getPublicRoutes, getSnapshot, findItem } from '#lib/server/content.ts';
 import type { PublicContentItem } from '#lib/content/types.ts';
 import { publicConfig } from '#lib/config.ts';
+import { getLegacyRouteRedirect, getLegacyRouteEntries } from '#lib/server/legacy-routes.ts';
 
 export const prerender = true;
-export const entries: EntryGenerator = () => getPublicRoutes().map((path) => ({ path }));
+export const entries: EntryGenerator = () => {
+  const routes = new Set([...getPublicRoutes(), ...getLegacyRouteEntries()]);
+  return [...routes].map((path) => ({ path }));
+};
 
 function duration(seconds: number | null): string | undefined {
   if (seconds === null) return undefined;
@@ -102,11 +106,17 @@ function bodyParts(html: string, cardId: number | null): BodySegment[] {
 
 export const load: PageServerLoad = ({ params }) => {
   const path = `/${params.path.replace(/^\/+|\/+$/g, '')}/`;
-  const item = findItem(path);
+  const legacyTarget = getLegacyRouteRedirect(path, base);
+  if (legacyTarget) redirect(308, legacyTarget);
   const snapshot = getSnapshot();
-  const category = snapshot.items.flatMap((entry) => entry.categories).find((term) => term.path === path);
-  if (!item && !category) error(404, 'This page could not be found.');
-  const categoryItems = category ? snapshot.items.filter((entry) => entry.categories.some((term) => term.id === category.id))
+  const item = findItem(path);
+  const category = snapshot.categories.find((term) => term.path === path);
+  const tag = snapshot.tags.find((term) => term.path === path);
+  if (!item && !category && !tag) error(404, 'This page could not be found.');
+  const archive = category ?? tag;
+  const categoryItems = archive ? snapshot.items.filter((entry) => (category
+    ? entry.categories.some((term) => term.id === archive.id)
+    : entry.tags.some((term) => term.id === archive.id)))
     .map(({ post_id, path, image, kind, title, excerpt }) => ({
       post_id,
       path,
@@ -131,7 +141,7 @@ export const load: PageServerLoad = ({ params }) => {
   if (itemWithCanonical && itemWithCanonical.kind !== 'page') schemas.push({ '@context': 'https://schema.org', '@type': 'Article', headline: itemWithCanonical.title, description: itemWithCanonical.seo.description, datePublished: itemWithCanonical.date_published, dateModified: itemWithCanonical.date_modified, author: { '@type': 'Person', name: itemWithCanonical.author.name }, mainEntityOfPage: itemWithCanonical.seo.canonical, ...(itemWithCanonical.image ? { image: [itemWithCanonical.image.src] } : {}) });
   const absoluteUrl = (localPath: string) => `${publicConfig.siteOrigin}${base}${localPath}`;
   const crumbs = [{ name: 'Home', url: absoluteUrl('/') }];
-  if (category) crumbs.push({ name: category.name, url: absoluteUrl(category.path) });
+  if (archive) crumbs.push({ name: archive.name, url: absoluteUrl(archive.path) });
   else if (itemWithCanonical) {
     const term = itemWithCanonical.categories[0];
     if (term) crumbs.push({ name: term.name, url: absoluteUrl(term.path) });
@@ -142,14 +152,14 @@ export const load: PageServerLoad = ({ params }) => {
   const serializedItem = itemWithCanonical ? (({ content_html, ...rest }) => rest)(itemWithCanonical) : null;
   return {
     item: serializedItem,
-    category,
+    category: archive,
     categoryItems,
     segments: item ? bodyParts(item.content_html, item.card_id).map((segment) => ({
       ...segment,
       html: segment.html.replace(/(href=["'])\/(?!\/)/g, `$1${base}/`)
     })) : [],
     schemas: schemas.map(safeJson),
-    canonical: seo?.canonical ?? absoluteUrl(category?.path ?? '/'),
+    canonical: seo?.canonical ?? absoluteUrl(archive?.path ?? '/'),
     seo
   };
 };

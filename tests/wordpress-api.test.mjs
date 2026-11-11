@@ -1,6 +1,7 @@
+import { fetchWordPressSnapshot } from '../src/lib/content/wordpress-api.ts';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fetchWordPressSnapshot } from '../src/lib/content/wordpress-api.ts';
 
 const seo = { title: 'Banana bread', description: 'Description', canonical: 'https://example.test/banana-bread/', robots: 'index,follow', og_title: 'Banana bread', og_description: 'Description', og_image: null };
 function post({ id = 1, content = '<div id="mv-creation-82">card</div>', yoast_head_json = seo, link = 'https://example.test/banana-bread/', title = 'Banana Bread' } = {}) {
@@ -61,12 +62,20 @@ function wpCommentsResponse(url, comments = []) {
     'X-WP-TotalPages': String(pageCount), 'X-WP-Total': String(records.length)
   });
 }
-function createFetcher({ posts = [post()], pages = [], cards = new Map([[82, card()]]), comments = new Map(), changedCard, html = '<html><head><title>Banana bread</title><meta name="description" content="Description"><meta name="robots" content="index,follow"><meta property="og:title" content="Banana bread"><meta property="og:description" content="Description"><link rel="canonical" href="https://example.test/banana-bread/"></head></html>', unavailablePage = false } = {}) {
+function createFetcher({ posts = [post()], pages = [], categories = [], tags = [], changedTaxonomy, cards = new Map([[82, card()]]), comments = new Map(), changedCard, html = '<html><head><title>Banana bread</title><meta name="description" content="Description"><meta name="robots" content="index,follow"><meta property="og:title" content="Banana bread"><meta property="og:description" content="Description"><link rel="canonical" href="https://example.test/banana-bread/"></head></html>', unavailablePage = false } = {}) {
   const calls = [];
   let cardRequests = 0;
+  let taxonomyRequests = 0;
   const fetcher = async (input, init) => {
     const url = new URL(input); calls.push({ url, init });
     if (url.pathname.endsWith('/wp/v2/comments')) return wpCommentsResponse(url, comments.get(Number(url.searchParams.get('post'))) ?? []);
+    if (url.pathname.endsWith('/wp/v2/categories') || url.pathname.endsWith('/wp/v2/tags')) {
+      taxonomyRequests += 1;
+      const collection = url.pathname.endsWith('/categories') ? categories : tags;
+      const values = changedTaxonomy && taxonomyRequests > 2 && url.pathname.endsWith('/categories') ? [changedTaxonomy] : collection;
+      const pageNo = Number(url.searchParams.get('page') ?? 1);
+      return response(values.slice((pageNo - 1) * 100, pageNo * 100), { 'X-WP-TotalPages': String(Math.ceil(values.length / 100)), 'X-WP-Total': String(values.length) });
+    }
     if (url.pathname.endsWith('/wp/v2/posts') || url.pathname.endsWith('/wp/v2/pages')) {
       const collection = url.pathname.endsWith('/posts') ? posts : pages;
       const pageNo = Number(url.searchParams.get('page') ?? 1);
@@ -93,6 +102,7 @@ test('imports paginated published posts/pages into validated normalized public s
   const fetcher = async (input, init) => {
     const url = new URL(input); calls.push({ url, init });
     if (url.pathname.endsWith('/wp/v2/comments')) return wpCommentsResponse(url);
+    if (url.pathname.endsWith('/wp/v2/categories') || url.pathname.endsWith('/wp/v2/tags')) return response([], { 'X-WP-TotalPages': '0', 'X-WP-Total': '0' });
     if (url.pathname.endsWith('/wp/v2/posts')) {
       const p = Number(url.searchParams.get('page') ?? 1);
       return response(p === 1 ? [pagedPost] : [], { 'X-WP-TotalPages': p === 1 ? '1' : '1', 'X-WP-Total': '1' });
@@ -110,6 +120,7 @@ test('imports paginated published posts/pages into validated normalized public s
   assert.equal(recipeItem.image.alt, 'Banana bread');
   assert.equal(recipeItem.image.width, 1200);
   assert.deepEqual(recipeItem.image.variants, [{ src: 'https://example.test/uploads/banana-bread-400.jpg', width: 400, height: 267 }]);
+  assert.deepEqual(recipeItem.tags.map(({ id, path }) => ({ id, path })), [{ id: 4, path: '' }]);
   assert.deepEqual(recipeItem.recipe.notes, []);
   assert.equal(recipeItem.recipe.rating, null);
   assert.deepEqual(recipeItem.recipe.ingredients[0], { name: '', items: [{ id: 100, text: '2 cups flour' }] });
@@ -123,6 +134,43 @@ test('imports paginated published posts/pages into validated normalized public s
   assert.ok(calls.filter(({ url }) => /\/wp\/v2\/(posts|pages)$/.test(url.pathname)).every(({ url }) => url.searchParams.get('status') === 'publish' && url.searchParams.get('context') === 'view' && url.searchParams.get('_embed') === '1' && url.searchParams.get('per_page') === '100'));
   assert.ok(calls.some(({ url }) => url.pathname.endsWith('/wp/v2/comments') && url.searchParams.get('status') === 'approve' && url.searchParams.get('context') === 'view' && url.searchParams.get('_fields') === 'id,post,parent,author_name,date_gmt,content'));
   assert.ok(calls.every(({ url }) => !url.pathname.includes('/pfoy/v1/')));
+});
+
+test('imports empty public taxonomies and includes their source descriptions in the revision', async () => {
+  const emptyCategory = { id: 24, name: 'Kid-friendly', slug: 'kid-friendly', link: 'https://example.test/category/kid-friendly/', description: '<p>Family meals</p>', count: 0 };
+  const emptyTag = { id: 31, name: 'Lunchbox', slug: 'lunchbox', link: 'https://example.test/tag/lunchbox/', description: '', count: 0 };
+  const { fetcher, calls } = createFetcher({ categories: [emptyCategory], tags: [emptyTag] });
+  const snapshot = await fetchWordPressSnapshot('https://example.test/wp-json/', opts(fetcher));
+
+  assert.deepEqual(snapshot.categories.map(({ id, name, slug, path, description }) => ({ id, name, slug, path, description })), [
+    { id: 24, name: 'Kid-friendly', slug: 'kid-friendly', path: '/category/kid-friendly/', description: 'Family meals' }
+  ]);
+  assert.deepEqual(snapshot.tags.map(({ id, path }) => ({ id, path })), [{ id: 31, path: '/tag/lunchbox/' }]);
+  assert.ok(snapshot.categories.every((term) => !Object.hasOwn(term, 'count')));
+  assert.equal(snapshot.revision, createHash('sha256').update(JSON.stringify({
+    items: snapshot.items,
+    categories: snapshot.categories,
+    tags: snapshot.tags
+  })).digest('hex'));
+});
+
+test('rejects standalone taxonomy links outside configured origins', async () => {
+  const { fetcher } = createFetcher({ categories: [{ id: 24, name: 'Hidden', slug: 'hidden', link: 'https://private.example/category/hidden/', description: '', count: 0 }] });
+  await assert.rejects(fetchWordPressSnapshot('https://example.test/wp-json/', opts(fetcher)), /outside the configured WordPress\/public origins/);
+});
+test('fails closed when public taxonomy data changes during retrieval', async () => {
+  const category = { id: 24, name: 'Kid-friendly', slug: 'kid-friendly', link: 'https://example.test/category/kid-friendly/', description: '', count: 0 };
+  const { fetcher } = createFetcher({ categories: [category], changedTaxonomy: { ...category, name: 'Changed' } });
+  await assert.rejects(fetchWordPressSnapshot('https://example.test/wp-json/', opts(fetcher)), /WordPress taxonomy changed during retrieval/);
+});
+
+test('imports linked public WordPress tag archive paths', async () => {
+  const taggedPost = post();
+  taggedPost._embedded['wp:term'][1][0].link = 'https://example.test/tag/bread/';
+  const { fetcher } = createFetcher({ posts: [taggedPost] });
+  const snapshot = await fetchWordPressSnapshot('https://example.test/wp-json/', opts(fetcher));
+
+  assert.deepEqual(snapshot.items[0].tags.map(({ id, path }) => ({ id, path })), [{ id: 4, path: '/tag/bread/' }]);
 });
 
 test('imports numbered Create instructions split from a paragraph when list items are absent', async () => {
@@ -325,6 +373,7 @@ test('follows WordPress pagination through all records', async () => {
   const fetcher = async (input, init) => {
     const url = new URL(input);
     if (url.pathname.endsWith('/wp/v2/comments')) return wpCommentsResponse(url);
+    if (url.pathname.endsWith('/wp/v2/categories') || url.pathname.endsWith('/wp/v2/tags')) return response([], { 'X-WP-TotalPages': '0', 'X-WP-Total': '0' });
     if (url.pathname.endsWith('/wp/v2/posts')) {
       const pageNumber = Number(url.searchParams.get('page'));
       requestedPages.push(pageNumber);
@@ -352,6 +401,7 @@ test('accepts CMS-origin post links, normalizes GMT timestamps, and prefers publ
   const fetcher = async (input) => {
     const url = new URL(input);
     if (url.pathname.endsWith('/wp/v2/comments')) return wpCommentsResponse(url);
+    if (url.pathname.endsWith('/wp/v2/categories') || url.pathname.endsWith('/wp/v2/tags')) return response([], { 'X-WP-TotalPages': '0', 'X-WP-Total': '0' });
     if (url.pathname.endsWith('/wp/v2/posts')) return response([cmsPost], { 'X-WP-TotalPages': '1', 'X-WP-Total': '1' });
     if (url.pathname.endsWith('/wp/v2/pages')) return response([], { 'X-WP-TotalPages': '0', 'X-WP-Total': '0' });
     throw new Error(`Unexpected request ${url}`);

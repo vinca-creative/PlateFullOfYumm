@@ -59,7 +59,7 @@
   @media (max-width: 600px) {
     header { position: relative; }
     .nav-menu { display: block; position: static; }
-    .nav-menu > summary { display: block; order: 2; padding: 10px 18px; border: 1px solid #b4bdaa; border-radius: 30px; color: var(--forest); font: 12px Arial, Helvetica, sans-serif; cursor: pointer; }
+    .nav-menu > summary { display: block; order: 2; padding: 10px 18px; border: 1px solid #b4bdaa; border-radius: 30px; color: var(--forest); font: 12px var(--font-body); cursor: pointer; }
     nav { display: none; position: absolute; z-index: 4; top: calc(100% - 1px); left: 0; right: 0; width: auto; padding: 12px 6%; flex-direction: column; align-items: stretch; gap: 0; background: var(--paper); border-bottom: 1px solid var(--line); }
     .nav-menu[open] nav { display: flex; }
     nav > a, nav summary { display: block; min-height: 44px; padding: 14px 0; }

@@ -2,7 +2,11 @@
   import { basePath as base } from '#lib/config.ts';
   import '../../template/website/assets/theme.css';
   import '../../template/website/assets/pages.css';
+  import '@fontsource-variable/inter/wght.css';
+  import '@fontsource-variable/fraunces/wght.css';
   import SiteHeader from '#lib/components/SiteHeader.svelte';
+  import Advertising from '#lib/components/Advertising.svelte';
+  import { publicConfig } from '#lib/config.ts';
   import type { LayoutData } from './$types';
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
   const aboutPage = $derived(data.pages.find((page) => /about|asha/i.test(`${page.title} ${page.path}`)));
@@ -19,6 +23,7 @@
   <SiteHeader categories={data.categories} aboutPath={aboutPage?.path ?? null} />
 </div>
 {@render children()}
+{#if publicConfig.adsEnabled}<Advertising />{/if}
 <footer class="site-footer">
   <div class="footer-inner wrap">
     <div><a class="footer-brand" href="{base}/">plate full <em>of</em> yum ✳</a><p>Good food, thoughtful stories, and recipes from Asha’s kitchen.</p></div>
@@ -28,13 +33,17 @@
 </footer>
 
 <style>
-  :global(body) { min-width: 320px; }
-  .footer-brand { color: inherit; font: 28px Georgia, serif; letter-spacing: -1.6px; }
+  :global(body) { min-width: 320px; font-family: var(--font-body); }
+  .footer-brand { color: inherit; font: 28px var(--font-display); letter-spacing: -1.6px; }
   .footer-brand em { color: #a9b69d; font-weight: normal; }
   .footer-inner { gap: 1rem 2rem; }
   .footer-inner p { color: #becabb; font-size: 12px; }
   .footer-inner nav { flex-wrap: wrap; gap: .8rem 1.3rem; font-size: 12px; }
   .copyright { color: #becabb; }
+  :global(.hero h1), :global(.page-intro h1), :global(.detail-hero h1), :global(h2), :global(.card h3), :global(.brand), :global(.footer-brand), :global(.browse p), :global(.photo-note h3), :global(.scribble) {
+    font-family: var(--font-display);
+  }
+  :global(.page-intro p), :global(.lede) { font-family: var(--font-body); }
   @media (max-width: 600px) {
     .footer-inner { align-items: start; gap: 20px; flex-direction: column; }
     .footer-inner nav { flex-direction: column; gap: .5rem; }

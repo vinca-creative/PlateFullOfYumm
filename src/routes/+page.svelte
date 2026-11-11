@@ -7,7 +7,7 @@
     const canonical = data.frontPage?.seo.canonical;
     if (!canonical) return `${publicConfig.siteOrigin}${base}/`;
     const url = new URL(canonical);
-    if (!base || url.origin !== publicConfig.siteOrigin) return canonical;
+    if (!base || url.origin !== publicConfig.siteOrigin || url.pathname === base || url.pathname.startsWith(`${base}/`)) return canonical;
     return `${url.origin}${base}${url.pathname}${url.search}${url.hash}`;
   });
 </script>
@@ -95,7 +95,7 @@
   .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 7%; padding-block: 64px 55px; align-items: center; }
   .hero-copy { min-width: 0; }
   .eyebrow { margin: 0; color: var(--muted); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; font-weight: bold; }
-  .hero h1 { margin: 25px 0; font: normal clamp(55px, 6.1vw, 88px)/1.03 Georgia, serif; letter-spacing: -4px; }
+  .hero h1 { margin: 25px 0; font: normal clamp(55px, 6.1vw, 88px)/1.03 var(--font-display); letter-spacing: -4px; }
   .hero h1 em { color: #75866b; font-weight: normal; }
   .hero-copy > p:not(.eyebrow) { max-width: 340px; color: var(--muted); font-size: 15px; line-height: 1.8; }
   .primary { display: inline-flex; align-items: center; gap: 34px; margin-top: 20px; padding: 17px 24px; border-radius: 30px; background: var(--forest); color: white; font-size: 12px; }
@@ -104,17 +104,17 @@
   .hero-image img { display: block; width: 100%; height: 490px; object-fit: cover; border-radius: 170px 170px 5px 5px; }
   .photo-note { position: absolute; bottom: 0; left: -24px; min-width: 240px; padding: 20px 25px; background: #e6ebdf; box-shadow: 0 6px 20px #25392e09; }
   .photo-note > span { font-size: 9px; letter-spacing: 1.5px; }
-  .photo-note h2 { margin: 9px 0 0; font: normal 22px Georgia, serif; }
+  .photo-note h2 { margin: 9px 0 0; font: normal 22px var(--font-display); }
   .photo-note b { float: right; margin-left: 28px; font-size: 20px; }
   .hero-without-image { grid-template-columns: 1fr; }
   .browse { display: flex; align-items: center; gap: 35px; padding-block: 30px 35px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-  .browse > p { margin: 0; font: italic 19px Georgia, serif; white-space: nowrap; }
+  .browse > p { margin: 0; font: italic 19px var(--font-display); white-space: nowrap; }
   .chips { display: flex; flex-wrap: wrap; gap: 10px; }
   .chip { display: inline-flex; align-items: center; gap: 14px; padding: 12px 19px; border: 1px solid #ccd4c4; border-radius: 25px; color: var(--forest); font-size: 12px; }
   .chip:hover { border-color: var(--forest); background: var(--forest); color: white; }
   .recipe-section, .stories { padding-block: 65px; }
   .section-head { display: flex; align-items: end; justify-content: space-between; gap: 25px; margin-bottom: 30px; }
-  .section-head h2, .stories h2 { margin: 12px 0 0; font: normal 42px/1.15 Georgia, serif; letter-spacing: -1.3px; }
+  .section-head h2, .stories h2 { margin: 12px 0 0; font: normal 42px/1.15 var(--font-display); letter-spacing: -1.3px; }
   .text-link { display: inline-block; margin-top: 15px; padding-bottom: 7px; border-bottom: 1px solid; font-size: 12px; }
   .all-link { padding-bottom: 7px; font-size: 12px; white-space: nowrap; }
   .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
@@ -123,19 +123,19 @@
   .card-image { display: block; width: 100%; height: 285px; object-fit: cover; border-radius: 4px; transition: filter .2s; }
   .card-link:hover .card-image { filter: brightness(.92); }
   .meta { margin: 19px 0 10px; color: var(--muted); font-size: 9px; letter-spacing: 1.3px; text-transform: uppercase; }
-  .card h3 { margin: 0 0 12px; font: normal 23px/1.2 Georgia, serif; letter-spacing: -.4px; }
+  .card h3 { margin: 0 0 12px; font: normal 23px/1.2 var(--font-display); letter-spacing: -.4px; }
   .card-description { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.7; }
   .read { color: var(--muted); font-size: 11px; }
   .feature { display: grid; grid-template-columns: 1fr 1fr; align-items: center; margin-block: 10px 65px; overflow: hidden; border-radius: 5px; background: #e6ebdf; }
   .feature-image img { display: block; width: 100%; height: 390px; object-fit: cover; }
   .feature-copy { padding: 45px 14%; }
-  .feature-copy h2 { margin: 12px 0 0; font: normal 44px/1.15 Georgia, serif; letter-spacing: -1.3px; }
+  .feature-copy h2 { margin: 12px 0 0; font: normal 44px/1.15 var(--font-display); letter-spacing: -1.3px; }
   .feature-copy > p:not(.eyebrow) { color: var(--muted); font-size: 14px; line-height: 1.8; }
   .category-link { display: inline-block; margin: 15px 0 0 18px; padding-bottom: 7px; border-bottom: 1px solid; font-size: 12px; }
   .stories { border-top: 1px solid var(--line); }
   .story-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; }
   .story-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 110px; padding: 22px; border: 1px solid var(--line); background: white; }
-  .story-card h3 { margin: 0; font: normal 22px/1.25 Georgia, serif; }
+  .story-card h3 { margin: 0; font: normal 22px/1.25 var(--font-display); }
   @media (min-width: 1500px) { .hero-image img { height: 540px; } }
   @media (max-width: 900px) { .hero { gap: 5%; } .hero-image img { height: 420px; } .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .card-image { height: 330px; } .browse { display: block; } .feature-copy { padding: 30px 10%; } .feature-copy h2 { font-size: 35px; } }
   @media (max-width: 600px) { .wrap { padding-inline: 6%; } .hero { grid-template-columns: 1fr; padding-block: 35px; } .hero h1 { font-size: 65px; letter-spacing: -3px; } .hero-copy > p:not(.eyebrow) { max-width: 100%; } .hero-visual { margin: 20px 10px 0 12px; } .hero-image img { height: 390px; } .photo-note { left: -12px; } .browse { padding-block: 20px; } .chips { gap: 8px; } .chip { padding: 10px 15px; } .section-head { align-items: start; flex-direction: column; } .section-head h2, .stories h2 { font-size: 35px; } .grid { gap: 23px 15px; } .card-image { height: 210px; } .card h3 { font-size: 20px; } .meta { font-size: 8px; line-height: 1.7; } .feature { grid-template-columns: 1fr; margin-bottom: 45px; } .feature-image img { height: 300px; } .feature-copy { padding: 32px; } .story-grid { grid-template-columns: 1fr; } .recipe-section, .stories { padding-block: 40px; } }

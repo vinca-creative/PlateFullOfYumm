@@ -120,13 +120,14 @@ function canonicalForPublicOrigin(canonical: string, publicOrigin: string, cmsOr
   return url.href;
 }
 
-function publicLink(href: string, publicOrigin: string, cmsOrigin: string): string {
+function publicLink(href: string, publicOrigin: string, cmsOrigin: string): string | null {
   let url: URL;
   try {
     url = new URL(href);
   } catch {
     return href;
   }
+  if (url.origin === cmsOrigin && url.pathname.startsWith('/wp-json/')) return null;
   if (url.origin === cmsOrigin && !url.pathname.startsWith('/wp-content/uploads/')) {
     return new URL(`${url.pathname}${url.search}${url.hash}`, publicOrigin).href;
   }
@@ -143,11 +144,17 @@ export function normalizeContentItem(item: PublicContentItem, origins?: ContentO
   let cardCount = 0;
 
   function normalizeChildren(parent: DefaultTreeAdapterMap['parentNode']): void {
-    for (const node of parent.childNodes) {
+    for (let index = parent.childNodes.length - 1; index >= 0; index -= 1) {
+      const node = parent.childNodes[index]!;
       if (!('tagName' in node)) continue;
       const id = node.attrs.find((attribute) => attribute.name === 'id')?.value ?? '';
       const className = node.attrs.find((attribute) => attribute.name === 'class')?.value ?? '';
       const dataCardId = node.attrs.find((attribute) => attribute.name === 'data-mv-create-id')?.value ?? '';
+      if (className.split(/\s+/).includes('wp-block-query-pagination')) {
+        parent.childNodes.splice(index, 1);
+        continue;
+      }
+
       const isCardRegion = /^mv-creation-\d+$/.test(id) ||
         className.split(/\s+/).some((name) => name === 'mv-create-card' || name.startsWith('mv-create-card-')) ||
         dataCardId !== '';
@@ -166,7 +173,11 @@ export function normalizeContentItem(item: PublicContentItem, origins?: ContentO
 
       if (node.tagName === 'a' && publicOrigin && cmsOrigin) {
         const href = node.attrs.find((attribute) => attribute.name === 'href');
-        if (href) href.value = publicLink(href.value, publicOrigin, cmsOrigin);
+        if (href) {
+          const normalized = publicLink(href.value, publicOrigin, cmsOrigin);
+          if (normalized === null) node.attrs.splice(node.attrs.indexOf(href), 1);
+          else href.value = normalized;
+        }
       }
       normalizeChildren(node);
       if ('content' in node) normalizeChildren(node.content);

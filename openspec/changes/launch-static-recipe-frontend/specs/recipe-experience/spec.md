@@ -14,15 +14,24 @@ Public home, category, recipe, and editorial pages SHALL deliver complete meanin
 - **THEN** the article, complete recipe, navigation links, and approved comment snapshot are present and usable without a loading shell
 
 #### Scenario: Enhancement failure
-- **WHEN** search or live-comment enhancement fails
-- **THEN** static article and recipe content remain available and the affected enhancement displays its own clear state
+- **WHEN** search enhancement fails
+- **THEN** static article and recipe content remain available and the search interface displays its clear failure state
 
 ### Requirement: Preserved public routes and anchors
-The frontend SHALL preserve existing public permalink paths, trailing-slash conventions, and supported public in-page anchors. Public links and canonical URLs SHALL use the public origin. Missing or removed routes SHALL return HTTP 404, not a successful application shell.
+
+The frontend SHALL preserve existing public permalink paths, trailing-slash conventions, supported public in-page anchors, and all public category and tag paths reported by the validated snapshot, including empty archives. Public links and canonical URLs SHALL use the public origin. Missing or removed routes SHALL return HTTP 404, not a successful application shell.
 
 #### Scenario: Existing recipe deep link
 - **WHEN** a reader requests an existing permalink with its recipe or article anchor
 - **THEN** the matching content is available at the preserved path and the anchor reaches the corresponding section
+
+#### Scenario: Standalone empty taxonomy archive
+- **WHEN** the public WordPress taxonomy endpoints expose a category or tag with zero assigned content
+- **THEN** its validated public path is prerendered as an archive, preserves its source name and description, and appears in the sitemap without fabricated items
+
+#### Scenario: Known renamed permalink
+- **WHEN** a published page has an explicit legacy-path mapping to its current permalink
+- **THEN** the old path redirects to the mapped public route
 
 #### Scenario: Unknown or removed path
 - **WHEN** a reader requests a nonexistent path or a post removed by a successful rebuild
@@ -54,12 +63,6 @@ Recipe pages SHALL provide a jump-to-recipe link, ingredient checkboxes, and a p
 - **WHEN** JavaScript is disabled
 - **THEN** the recipe anchor and ingredient checkboxes remain usable and browser printing remains available
 
-### Requirement: Uncluttered recipe printing
-Printed recipe output SHALL include the recipe title, authored ingredients and instructions, and relevant recipe notes while excluding navigation, advertisements, interactive controls, and live comment forms. Printing SHALL preserve readable ordering and avoid clipping recipe content.
-
-#### Scenario: Printing a long recipe
-- **WHEN** a reader prints a multi-page recipe
-- **THEN** all ingredients, steps, and relevant notes appear in reading order without advertisements or clipped text
 
 ### Requirement: Static discovery and local search
 Home and category pages SHALL link to published public content. JavaScript-enhanced search SHALL query a public-only local index without a paid search service and expose loading, results, no-results, and failure states. Discovery SHALL exclude content removed by a successful rebuild.

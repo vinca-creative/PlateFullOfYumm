@@ -2,147 +2,79 @@
 
 ## Purpose
 
-Publish complete current WordPress content through GitHub Actions to free static hosting, with honest removal status, safe release ordering, and preserved public site identity.
+Generate complete host-specific static artifacts from one current public WordPress snapshot, publish a development build through GitHub Pages, and deploy the production-root artifact to Cloudflare Workers Static Assets.
 
 ## ADDED Requirements
 
-### Requirement: GitHub-controlled publication triggers
-Source and deployment configuration SHALL reside in GitHub. Production builds SHALL run through GitHub Actions on pushes to main, authenticated WordPress repository dispatches, and manual invocation. Each run SHALL retrieve current public content rather than replay a triggering event's content. Pull requests SHALL not deploy production or create public content previews.
+### Requirement: GitHub-owned builds and deployments
+Source and deployment configuration SHALL reside in GitHub. GitHub Actions SHALL build from current public WordPress content on pushes to `main` and manual invocation. Pull requests SHALL run checks without production deployment secrets or public previews. Builds SHALL NOT require a WordPress helper plugin, write access, or WordPress-triggered dispatch.
 
-#### Scenario: Supported production triggers
-- **WHEN** main changes, WordPress dispatches an eligible publication event, or an operator invokes a rebuild
-- **THEN** GitHub Actions requests a complete production build using current eligible content
+#### Scenario: Main push or manual build
+- **WHEN** `main` changes or an operator requests a rebuild
+- **THEN** GitHub Actions retrieves current eligible public content and builds the complete static site
 
-#### Scenario: Pull request build
-- **WHEN** a pull request runs build checks
-- **THEN** it receives no production deployment secrets and creates neither a production release nor a public preview
+#### Scenario: Pull request
+- **WHEN** a pull request runs checks
+- **THEN** it receives no production deployment credentials and creates no public content preview or release
 
-### Requirement: Public-output change notifications
-WordPress SHALL advance the public revision and request publication for transitions into or out of public visibility and changes to public posts/pages, associated Create cards, media, taxonomy, SEO, or visible comments. Draft-only edits, autosaves, and pending comments SHALL not publish private content or independently trigger a public-content rebuild.
+### Requirement: Complete validated static output
+Each successful build SHALL create a clean complete artifact containing all public HTML routes, required assets, search data, sitemap, RSS, and a real 404 page from one complete content snapshot. Failed or incomplete source retrieval SHALL fail the build rather than appear as an empty or partial site.
 
-#### Scenario: Public removal transition
-- **WHEN** a published post becomes draft, private, trashed, deleted, or password-protected
-- **THEN** WordPress records a newer desired revision and requests a rebuild that excludes the post
+#### Scenario: Missing or inconsistent source data
+- **WHEN** a required content page, linked recipe card, or paginated source response is missing or inconsistent
+- **THEN** the build fails and does not publish partial output
 
-#### Scenario: Card-only or moderation change
-- **WHEN** an associated public Create card changes or a comment's public text or approval visibility changes
-- **THEN** the public revision advances and a rebuild is requested without requiring an unrelated post edit
+#### Scenario: Content removal
+- **WHEN** an item is absent from the current eligible snapshot
+- **THEN** its generated page and derived discovery entries are absent from the next complete artifact
 
-#### Scenario: Scheduled publication
-- **WHEN** a scheduled post actually becomes public
-- **THEN** the public revision advances and publication is requested even when visitor traffic is absent
+### Requirement: Consistent serialized release
+Production deployment SHALL be serialized. The build SHALL verify that its complete source snapshot is stable before release, and deployment SHALL publish the artifact produced by that run rather than reuse an older content artifact. A failed pre-release build SHALL leave the prior deployment active.
 
-#### Scenario: Failed notification
-- **WHEN** GitHub cannot accept a dispatch
-- **THEN** the desired revision remains pending and notification is retried until publication is requested or an operator-visible failure requires action
-
-### Requirement: Clean complete static output
-Every build SHALL create a clean complete snapshot and static release manifest enumerating all public routes and derived outputs. The release SHALL include HTML, required assets, search data, sitemap, RSS, and a real 404 page from that snapshot. Failed source retrieval SHALL not be treated as an empty site or permit partial deployment.
-
-#### Scenario: Rebuild after removal
-- **WHEN** a post is absent from the current eligible snapshot
-- **THEN** its old HTML, page data, exclusively associated generated assets, and derived discovery entries are absent from the new release manifest and output
-
-#### Scenario: Failed source page
-- **WHEN** any required content page fails to load
-- **THEN** the build fails without publishing partial content or deleting unrelated live routes
-
-### Requirement: Revision checks and serialized releases
-Publication SHALL check the source revision before and after retrieval and again before deployment. Releases SHALL be serialized so an older release cannot finish after a newer release. A superseded snapshot SHALL not be deployed as current; changes during deployment SHALL retain a pending latest revision and ensure a subsequent build.
-
-#### Scenario: Change during build
-- **WHEN** public content changes after snapshot retrieval but before deployment
-- **THEN** the superseded release is withheld and a build for current content remains requested
-
-#### Scenario: Change during deployment
-- **WHEN** a newer public revision appears while a release is being deployed
-- **THEN** the in-progress release cannot acknowledge the newer revision, the newer revision stays pending, and a subsequent serialized build retrieves current content
+#### Scenario: Content changes during retrieval
+- **WHEN** the complete source projection changes between consistency passes
+- **THEN** the build fails without deploying the mixed snapshot
 
 #### Scenario: Overlapping or replayed workflow
-- **WHEN** production workflows overlap or an old workflow is rerun
-- **THEN** they cannot complete out of release order or replay an obsolete artifact as the latest publication
+- **WHEN** deployments overlap or an old workflow is rerun
+- **THEN** an older artifact cannot finish after a newer release or replace current content without rebuilding from current source
 
-### Requirement: Atomic release and honest publication status
-Successful release SHALL activate one complete static version. WordPress and GitHub SHALL expose desired revision, deployed revision, and pending, blocked, or failed outcome without claiming success before release checks pass. Pre-release failures SHALL preserve the last complete site. A failure after upload SHALL disclose uncertain or failed checks rather than falsely claim no change occurred.
+### Requirement: GitHub Pages development then Cloudflare production deployment
+For a successful main-branch run, GitHub Actions SHALL publish a development artifact to GitHub Pages and then deploy a production artifact to Cloudflare Workers Static Assets. Both artifacts SHALL be generated from the same complete validated public-content snapshot; target-specific base paths and canonical origins MAY differ. Cloudflare SHALL serve static assets without requiring request-time application execution. Custom-domain DNS cutover is outside this change.
 
-#### Scenario: Successful unpublish
-- **WHEN** a removal release activates and its public checks succeed
-- **THEN** the removed URL returns HTTP 404, its derived entries are absent, and the matching revision is acknowledged as deployed
+#### Scenario: Successful release
+- **WHEN** the complete build and GitHub Pages development deployment pass
+- **THEN** the workflow deploys the production artifact generated from that run's same validated snapshot to the configured Cloudflare Workers Static Assets environment and smoke-checks its routes and assets
 
-#### Scenario: Failed removal build
-- **WHEN** an unpublish rebuild fails before release
-- **THEN** the last complete deployment remains live and the removal remains visibly pending or failed rather than reported as complete
+#### Scenario: Pre-release failure
+- **WHEN** build validation or the GitHub Pages development deployment fails
+- **THEN** the Cloudflare production deployment is not attempted and the previous Cloudflare release remains active
 
-#### Scenario: Post-upload check failure
-- **WHEN** upload completes but the public release checks fail
-- **THEN** status records the failed checks without a false successful acknowledgement or a false assertion that the old version necessarily remains active
+### Requirement: Static routes, caching, and access
+The deployed site SHALL return real 404 responses for missing routes, preserve configured public paths and legacy media mappings, revalidate HTML and non-fingerprinted discovery data, and avoid public historical previews, offline HTML caches, or long-lived stale HTML. The release SHALL remain within the configured free-plan limits without automatic paid upgrades or provider failover.
 
-### Requirement: Authenticated minimal automation messages
-WordPress-to-GitHub dispatches and deployment acknowledgements SHALL be authenticated, scoped to the intended repository/site, and contain only necessary revision, event, run, and outcome metadata. Acknowledgements SHALL resist replay and bind success to the expected release identity. Credentials SHALL remain outside browser bundles, public artifacts, dispatch payloads, and logs.
+#### Scenario: Missing route and removed page
+- **WHEN** a reader requests a missing route or a route removed from the current artifact
+- **THEN** the host returns HTTP 404 rather than a successful application shell
 
-#### Scenario: Forged or stale acknowledgement
-- **WHEN** an unauthenticated, replayed, mismatched, or older callback attempts to acknowledge a deployment
-- **THEN** it cannot mark a pending newer revision as deployed or reduce the recorded deployed revision
+#### Scenario: Stale or historical content
+- **WHEN** a reader requests an old deployment preview or revisits a page after its removal deployment
+- **THEN** the active deployment does not expose public historical content or serve stale HTML as current
 
-#### Scenario: Inspecting public artifacts
-- **WHEN** a reader retrieves generated files or observes a dispatch payload
-- **THEN** neither contains deployment credentials, callback secrets, privileged WordPress data, or draft content
+#### Scenario: Free-plan limit exceeded
+- **WHEN** the build or artifact exceeds configured free-tier limits
+- **THEN** deployment fails visibly without paid execution, paid overage, or automatic provider switching
 
-### Requirement: Free static delivery and portable fallback
-Production SHALL default to Cloudflare Workers Static Assets on the Free plan without required request-time cloud execution. The same complete static artifact SHALL be deployable to Cloudflare Pages Free as an operator-selected fallback, with equivalent routes, real 404s, redirects, caching, removal, and preview restrictions. Fallback SHALL not be automatic failover.
+### Requirement: Secrets remain private
+GitHub, WordPress, and hosting credentials SHALL remain in their authorized secret stores and SHALL NOT appear in browser bundles, generated artifacts, public logs, or pull-request jobs.
 
-#### Scenario: Default host
-- **WHEN** a reader requests a public recipe on the default host
-- **THEN** complete static HTML is served without invoking a required cloud application runtime or WordPress page rendering
+#### Scenario: Inspecting an artifact or pull-request job
+- **WHEN** public output is inspected or an untrusted pull request runs
+- **THEN** no deployment credential or privileged WordPress data is exposed
 
-#### Scenario: Operator-selected fallback
-- **WHEN** an operator chooses Pages Free and completes its compatibility checks
-- **THEN** the same content artifact can serve the public site without a content-model rewrite or weaker removal and preview guarantees
+### Requirement: Deployment evidence is explicit
+Local planning or a successful local build SHALL NOT be reported as a successful GitHub Pages or Cloudflare deployment. Deployment acceptance SHALL identify the environment and verify representative pages, assets, discovery outputs, and real 404 behavior.
 
-### Requirement: No automatic paid usage
-Hosting and builds SHALL remain within configured free-tier limits without automatic paid enrollment, paid runners, or paid overage. GitHub execution and storage entitlements SHALL account for repository visibility. Quota exhaustion SHALL block publication visibly instead of silently incurring charges; existing WordPress/media hosting and domain costs remain separate.
-
-#### Scenario: Private repository quota exhausted
-- **WHEN** included GitHub Actions minutes or storage are exhausted
-- **THEN** publication is blocked without paid execution and pending changes, including removals, remain visibly undeployed
-
-#### Scenario: Static hosting limit exceeded
-- **WHEN** an artifact exceeds the selected free plan's supported limits
-- **THEN** deployment fails visibly without an automatic paid upgrade or automatic provider switch
-
-### Requirement: No stale-content access paths
-The public deployment SHALL expose no draft previews, public historical version previews, offline HTML cache, or long-lived stale HTML/discovery caching. HTML and non-fingerprinted discovery data SHALL revalidate. Code rollback SHALL rebuild against current public content rather than reactivate an old content artifact. Already downloaded copies and third-party caches are outside the removal guarantee.
-
-#### Scenario: Historical preview request
-- **WHEN** a reader attempts to access an old deployment through a provider version or preview URL
-- **THEN** that historical content is unavailable publicly rather than bypassing a completed removal
-
-#### Scenario: Code rollback after unpublish
-- **WHEN** an operator rolls back application code after content was unpublished
-- **THEN** the resulting release uses current eligible content and does not restore the unpublished page
-
-#### Scenario: Returning reader after removal
-- **WHEN** a reader revisits a removed route after a successful release
-- **THEN** the active site does not serve a stale service-worker or long-lived HTML-cache copy as the current page
-
-### Requirement: Public identity and CMS migration
-Cutover SHALL preserve the public domain, legitimate legacy routes, public anchors, media paths, and feed access while moving WordPress behind a distinct CMS origin. CMS HTML SHALL be nonindexable without blocking public media indexing. Drafts and administration SHALL require actual access controls, not robots directives. Legacy media mapping SHALL not redirect recipe routes or permit open redirects.
-
-#### Scenario: Legacy public media
-- **WHEN** a crawler or reader follows an existing public upload URL after cutover
-- **THEN** the image remains reachable through a path-preserving mapping and is not blocked merely because CMS HTML is nonindexable
-
-#### Scenario: CMS and public identity
-- **WHEN** a crawler requests CMS HTML and the corresponding public frontend page
-- **THEN** the CMS HTML is nonindexable and the frontend metadata identifies the intended public URL without a redirect loop
-
-### Requirement: Evidence-based launch acceptance
-Production cutover SHALL require recorded checks of representative recipes, editorial pages, no-JavaScript use, media, metadata, consent, comments, real 404s, and publication/removal transitions on an authorized environment. Planning or static analysis alone SHALL not be reported as successful deployment, production comment submission, account approval, or live removal verification.
-
-#### Scenario: Planning artifacts only
-- **WHEN** only planning artifacts have been produced
-- **THEN** deployment and live acceptance remain explicitly unexercised rather than reported as successful
-
-#### Scenario: Authorized transition checks
-- **WHEN** publication and removal are exercised in an authorized test environment
-- **THEN** evidence identifies the environment, triggering revision, resulting release/status, direct URL responses, and relevant derived-output changes before those checks are claimed complete
+#### Scenario: Local-only verification
+- **WHEN** only local builds or static-server checks have run
+- **THEN** GitHub Pages and Cloudflare deployment acceptance remains unverified
