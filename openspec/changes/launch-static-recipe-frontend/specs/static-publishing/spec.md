@@ -40,11 +40,16 @@ Production deployment SHALL be serialized. The build SHALL verify that its compl
 - **THEN** an older artifact cannot finish after a newer release or replace current content without rebuilding from current source
 
 ### Requirement: GitHub Pages development then Cloudflare production deployment
-For a successful main-branch run, GitHub Actions SHALL publish a development artifact to GitHub Pages and then deploy a production artifact to Cloudflare Workers Static Assets. Both artifacts SHALL be generated from the same complete validated public-content snapshot; target-specific base paths and canonical origins MAY differ. Cloudflare SHALL serve static assets without requiring request-time application execution. Custom-domain DNS cutover is outside this change.
+For a successful main-branch run, GitHub Actions SHALL publish a development artifact to GitHub Pages and then deploy a production artifact to the configured Cloudflare Workers Static Assets or operator-selected Cloudflare Pages Direct Upload target. Both artifacts SHALL be generated from the same complete validated public-content snapshot; target-specific base paths and canonical origins MAY differ. Cloudflare SHALL serve static assets without requiring request-time application execution. Custom-domain DNS cutover is outside this change.
+
+#### Scenario: Pages Direct Upload before custom-domain setup
+- **WHEN** Pages Direct Upload is selected and `PFOY_PUBLIC_SITE_ORIGIN` is the exact Cloudflare-assigned `<subdomain>.pages.dev` host for the selected Pages project
+- **THEN** it may be used before a custom domain is attached; custom-domain setup is independent and may happen later, while arbitrary Pages hosts are rejected
+- **AND** the operator confirms the project production branch is `main` and preview/historical deployment URLs are protected from public access
 
 #### Scenario: Successful release
 - **WHEN** the complete build and GitHub Pages development deployment pass
-- **THEN** the workflow deploys the production artifact generated from that run's same validated snapshot to the configured Cloudflare Workers Static Assets environment and requests only its home page, requiring a successful response with nonempty content
+- **THEN** the workflow deploys the production artifact generated from that run's same validated snapshot to the configured Cloudflare target and requests only its home page, requiring a successful response with nonempty content
 
 #### Scenario: Pre-release failure
 - **WHEN** build validation or the GitHub Pages development deployment fails

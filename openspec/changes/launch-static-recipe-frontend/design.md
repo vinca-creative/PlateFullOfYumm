@@ -153,7 +153,7 @@ Default: Cloudflare Workers Static Assets on the Free plan, serving generated fi
 
 Set HTML and non-fingerprinted discovery/index data to revalidate; fingerprinted application assets can have long immutable caching. Do not add a service worker, stale HTML cache rule, or public historical preview. Custom-domain DNS cutover is outside this change; Cloudflare acceptance can use its assigned deployment URL.
 
-Fallback: Cloudflare Pages Free Direct Upload from the same production-root artifact generated for Workers. It is operator-selected and not automatic failover. Verify equivalent 404, redirects, cache behavior, and removal semantics before selecting it.
+Fallback: Cloudflare Pages Free Direct Upload from the same production-root artifact generated for Workers. It is operator-selected and not automatic failover. For Pages, `PFOY_PUBLIC_SITE_ORIGIN` may use the exact Cloudflare-assigned `<subdomain>.pages.dev` host for the selected Pages project before a custom domain is attached; custom-domain setup is independent and may happen later. Reject unrelated `pages.dev` hosts. Before public upload, confirm the project production branch is `main`, the configured origin matches its assigned project host or an active custom domain, and preview/historical deployment URLs are protected (for example with Cloudflare Access); these protections require account-level verification. Verify equivalent 404, redirects, cache behavior, and removal semantics before selecting it.
 
 GitHub Actions and hosting must remain within configured free entitlements. Set blocking spending controls; do not use paid runners, automatic upgrades, or provider switching. Quota exhaustion blocks publication visibly. WordPress/media and domain costs remain separate.
 
