@@ -13,7 +13,7 @@ async function runPreflight(origin, domainEntries) {
   const bin = path.join(directory, 'bin');
   await mkdir(bin);
   const curl = `#!/usr/bin/env node\nconst url = process.argv.at(-1);\nprocess.stdout.write(JSON.stringify(url.endsWith('/domains') ? { success: true, result: ${JSON.stringify(domainEntries)} } : { success: true, result: { production_branch: 'main', subdomain: 'platefullofyum.pages.dev' } }));\n`;
-  const jq = `#!/usr/bin/env node\nlet input=''; for await (const chunk of process.stdin) input += chunk; const data=JSON.parse(input); const expr=process.argv.at(-1); if(expr==='.success') console.log(data.success); else if(expr==='.result.production_branch') console.log(data.result.production_branch); else if(expr==='.result.subdomain') console.log(data.result.subdomain); else { const host=process.argv[process.argv.indexOf('--arg')+2]; process.exit(data.result.filter(x=>x.name===host&&x.status==='active').length===1 ? 0 : 1); }\n`;
+  const jq = `#!/usr/bin/env node\nconst fs = require('node:fs'); const data = JSON.parse(fs.readFileSync(0, 'utf8')); const expr = process.argv.at(-1); if (expr === '.success') console.log(data.success); else if (expr === '.result.production_branch') console.log(data.result.production_branch); else if (expr === '.result.subdomain') console.log(data.result.subdomain); else { const host = process.argv[process.argv.indexOf('--arg') + 2]; process.exit(data.result.filter(x => x.name === host && x.status === 'active').length === 1 ? 0 : 1); }\n`;
   for (const [name, content] of [['curl', curl], ['jq', jq]]) {
     const file = path.join(bin, name);
     await writeFile(file, content);
