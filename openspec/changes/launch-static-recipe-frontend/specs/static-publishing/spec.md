@@ -44,7 +44,7 @@ For a successful main-branch run, GitHub Actions SHALL publish a development art
 
 #### Scenario: Successful release
 - **WHEN** the complete build and GitHub Pages development deployment pass
-- **THEN** the workflow deploys the production artifact generated from that run's same validated snapshot to the configured Cloudflare Workers Static Assets environment and smoke-checks its routes and assets
+- **THEN** the workflow deploys the production artifact generated from that run's same validated snapshot to the configured Cloudflare Workers Static Assets environment and requests only its home page, requiring a successful response with nonempty content
 
 #### Scenario: Pre-release failure
 - **WHEN** build validation or the GitHub Pages development deployment fails

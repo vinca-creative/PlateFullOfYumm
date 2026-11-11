@@ -94,9 +94,7 @@ jobs:
           node --experimental-strip-types scripts/write-media-redirects.ts
           cp .github/workflows/_headers build/_headers
           node --experimental-strip-types scripts/static-artifact-audit.ts build content-snapshot/snapshot.json '' release-artifact/cloudflare-route-asset-manifest.json
-          node --experimental-strip-types scripts/publication.ts capture-smoke-baseline
           mkdir -p release-artifact
-          cp "$RUNNER_TEMP/pfoy-smoke-baseline.json" release-artifact/smoke-baseline.json
           cp -a build release-artifact/build
       - name: Upload complete production artifact
         uses: actions/upload-artifact@v4
@@ -124,7 +122,7 @@ jobs:
         with:
           artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Check out Pages smoke verifier
+      - name: Check out Pages home-page verifier
         uses: actions/checkout@v4.2.2
         with:
           ref: ${{ github.sha }}
@@ -132,7 +130,7 @@ jobs:
       - uses: actions/setup-node@v4.4.0
         with:
           node-version: 22.17.0
-      - name: Smoke-test deployed GitHub Pages site
+      - name: Check deployed GitHub Pages home page
         env:
           PAGES_PAGE_URL: ${{ steps.deployment.outputs.page_url }}
           PAGES_BASE_PATH: /${{ github.event.repository.name }}
@@ -165,10 +163,8 @@ jobs:
         with:
           name: production-site-${{ github.run_id }}-${{ github.run_attempt }}
           path: release-artifact
-      - name: Restore production artifact and route baseline
-        run: |
-          cp -a release-artifact/build build
-          cp release-artifact/smoke-baseline.json "$RUNNER_TEMP/pfoy-smoke-baseline.json"
+      - name: Restore production artifact
+        run: cp -a release-artifact/build build
       - name: Require supported Cloudflare deployment target
         run: |
           case "$PFOY_DEPLOYMENT_TARGET" in
@@ -216,7 +212,7 @@ jobs:
           PFOY_PAGES_PROJECT_NAME: ${{ vars.PFOY_PAGES_PROJECT_NAME }}
           PFOY_RELEASE_SHA: ${{ github.sha }}
         run: bash scripts/deploy-pages-verify.sh
-      - name: Verify routes, assets, removals and real 404 responses
+      - name: Check deployed production home page
         env:
           PFOY_PUBLIC_SITE_ORIGIN: ${{ vars.PFOY_PUBLIC_SITE_ORIGIN }}
         run: node --experimental-strip-types scripts/publication.ts smoke

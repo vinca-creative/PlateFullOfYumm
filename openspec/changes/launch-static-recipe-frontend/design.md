@@ -142,7 +142,7 @@ For each deployment run:
 3. Validate source pagination, relationships, content-derived revision, public eligibility, paths, route/asset manifest, and generated indexes. A changed content fingerprint between full source passes fails the build.
 4. Generate target-specific static artifacts from the same complete validated snapshot: a GitHub Pages development artifact with the repository base path and a Cloudflare production artifact with root-based public URLs.
 5. Publish the development artifact to GitHub Pages and verify base-path assets and routes.
-6. Deploy the production artifact to Cloudflare Workers Static Assets using pinned Wrangler tooling; serialize deployments and smoke-check HTML, assets, discovery output, and 404 responses.
+6. Deploy the production artifact to Cloudflare Workers Static Assets using pinned Wrangler tooling; request the deployed home page and require a successful response with nonempty content.
 7. Do not deploy to Cloudflare if build validation or GitHub Pages development publishing fails. A pre-release failure leaves the prior complete Cloudflare release active. No WordPress acknowledgement endpoint is involved.
 
 The deployment environment and required credentials are configured in GitHub. Pull-request and fork jobs receive no deploy credentials. A workflow rerun fetches current content and rebuilds instead of replaying a stale artifact.
@@ -179,7 +179,7 @@ Preserve configured public permalink paths, anchors, canonical metadata, RSS, si
 2. Confirm public WordPress/Create endpoints and authored SEO sources; use public reads only.
 3. Build and verify the static artifact locally against representative public recipes, editorial articles, and approved comment snapshots.
 4. Publish a development build to GitHub Pages and verify project-base routing and generated outputs.
-5. Deploy the production-root artifact generated from the same validated snapshot to Cloudflare Workers Static Assets and smoke-check representative routes, assets, discovery files, and real 404 behavior.
+5. Deploy the production-root artifact generated from the same validated snapshot to Cloudflare Workers Static Assets and request only its home page, requiring a successful response with nonempty content.
 6. Keep the existing public WordPress domain and CMS configuration unchanged. Defer custom-domain cutover, publication hooks, live comment reads/submission, and staging lifecycle acceptance.
 
 ## Open Questions

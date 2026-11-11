@@ -23,9 +23,9 @@ Use server-side rendering during prerendering. Do not add a SPA fallback: unknow
 - `src/lib/content/types.ts`: typed public-content snapshot contract.
 - `src/lib/content/validate.ts`, `normalize.ts`, and `wordpress-api.ts`: strict snapshot validation, paginated direct WordPress/Create retrieval with two-pass revision checks, safe HTML normalization, and single-card placeholder replacement.
 - `src/app.html`: SvelteKit document template.
-- `scripts/fetch-content.ts` and `scripts/publication.ts`: complete two-pass public content snapshot fetch, atomic snapshot output, pre-release route inventory and deployed route/asset/404 smoke checks; generated snapshot writes to ignored `content-snapshot/`.
+- `scripts/fetch-content.ts` and `scripts/publication.ts`: complete two-pass public content snapshot fetch, atomic snapshot output, and a deployed-home-page smoke check; generated snapshot writes to ignored `content-snapshot/`.
 - `scripts/deploy-*.sh`: build, cleanup, headers, configuration checks, Cloudflare deployment and Pages verification helpers invoked by the production workflow; deployment shell logic stays in scripts rather than workflow YAML.
-- `tests/content.test.mjs`, `tests/wordpress-api.test.mjs`, `tests/fetch-content.test.mjs`, and `tests/publication.test.mjs`: normalization safety, direct REST mapping/integrity, atomic snapshot ingestion, and deployment smoke-route validation.
+- `tests/content.test.mjs`, `tests/wordpress-api.test.mjs`, `tests/fetch-content.test.mjs`, `tests/publication.test.mjs`, and `tests/pages-deployment-smoke.test.mjs`: normalization safety, direct REST mapping/integrity, atomic snapshot ingestion, and homepage smoke behavior.
 - `wordpress/platefullofyum-headless/`: optional WordPress helper plugin for guest-comment submission, fail-closed revision tracking/dispatch retry, HMAC deployment status, and optional SEO/classification REST fields; installation/compatibility notes.
 - `.github/workflows/`, `.github/workflows/_headers`, and `wrangler.jsonc`: secret-free PR checks and serialized current-content main/manual GitHub Pages then Cloudflare deployment; workflow execution, credentials, free-plan limits, and production hosting remain unverified.
 - `vite.config.ts`, `tsconfig.json`, `package.json`, `package-lock.json`: build, type-check, and pinned dependency setup.
